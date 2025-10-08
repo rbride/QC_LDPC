@@ -12,6 +12,23 @@ module qc_ldpc_encoder #(
 );
 
     // -------------------------------------------------------------------------
+    // Memory block Module Generated based on parameter input for the matrix 
+    // prototype tables provided in the Standard 
+    // Should be generic enough to fill the needs of all the different coding rates
+    // Atleast for n=1296 and z=54
+    // -------------------------------------------------------------------------
+    matrix_proto_mem #(
+        .Z(Z),
+        .NUM_INFO_BLKS(NUM_INFO_BLKS),
+        .NUM_PARITY_BLKS(NUM_PARITY_BLKS)
+    ) mem_inst (
+        .clk(clk),
+        .rst(rst)
+        // Additional ports as needed
+    );
+    
+
+    // -------------------------------------------------------------------------
     // Shift values table (from LDPC base matrix in the standard)
     // Example: For each parity row, define the shifts relative to info blocks
     // -1 means "zero block" (skip)
