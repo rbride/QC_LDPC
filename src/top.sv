@@ -1,5 +1,7 @@
-// Z sizes are 27, 54, and 81
+`timescale 1ns / 1ps
+`default_nettype none
 
+// Z sizes are 27, 54, and 81
 module qc_ldpc_encoder #(
     parameter int Z = 54,              // circulant size
     parameter int NUM_INFO_BLKS = 20,  // number of info blocks
@@ -13,35 +15,33 @@ module qc_ldpc_encoder #(
     output logic [Z-1:0]           codeword  [TOTAL_BLKS-1:0]   // final encoded codeword
 );
 
-    // -------------------------------------------------------------------------
-    // Memory block Module Generated based on parameter input for the matrix 
-    // prototype tables provided in the Standard. Should except parameter for LUT
-    // Or BRAM based on a parameter to test area and speed tradeoffs of the two
-    // Should be generic enough to fill the needs of all the different coding rates
-    // Atleast for n=1296 and z=54
-    // -------------------------------------------------------------------------
-    matrix_proto_mem #(
-        .Z(Z),
-        .NUM_INFO_BLKS(NUM_INFO_BLKS),
-        .NUM_PARITY_BLKS(NUM_PARITY_BLKS)
-    ) mem_inst (
-        .clk(clk),
-        .rst(rst)
-        // Additional ports as needed
-    );
-    
+    localparam int CODEWORD_LEN = Z * 24;
+    localparam int PROTO_MATRIX_WIDTH = $clog2(Z); //Width needed to store values from 0 to Z-1
+    localparam int PROTO_MATRIX_DEPTH = 24*4;   //The depth would differ if the rate changed 
+    localparam int PROTO_MATRIX_ADDRW = $clog2(DEPTH);   
+    wire shift_addr  [PROTO_MATRIX_ADDRW-1:0];
+    wire shift_value [PROTO_MATRIX_WIDTH-1:0];
+
 
     // -------------------------------------------------------------------------
-    // Shift values table (from LDPC base matrix in the standard)
-    // Example: For each parity row, define the shifts relative to info blocks
-    // -1 means "zero block" (skip)
-    // You would initialize this from the standard’s base matrix
+    // Memory block Module Generated based on parameter input for the matrix 
+    // prototype tables provided in the Standard. 
+    // Potential Expand to: Accept parameters for LUT Or BRAM based on a parameter
+    // to test area and speed tradeoffs of the two (would change timing), however,
+    // by concating columns together, I might be able to number of cycles
+    // while creating a somewhat more generic circuit that is potentially capable,
+    // of on the fly swithching between code lenghts and maybe even rates. 
     // -------------------------------------------------------------------------
-    int shift_table [NUM_PARITY_BLKS-1:0][NUM_INFO_BLKS-1:0] = '{
-        '{  0,  12, -1, 47, -1, ... }, // parity row 0
-        '{ -1,  25, 33, -1,  9, ... }, // parity row 1
-        // etc...
-    };
+    ProtoMatrixRom #(.Z(Z), .CODEWORD_LEN(CODEWORD_LEN), 
+                     .WIDTH(PROTO_MATRIX_WIDTH), .DEPTH(PROTO_MATRIX_DEPTH), 
+                     .ADDRW(PROTO_MATRIX_ADDRW)
+                    )  
+        GenROM (
+            .addr(shift_addr),
+            .data(shift_value)   
+    );
+    
+    
 
     // -------------------------------------------------------------------------
     // Barrel shift function (cyclic left shift)
