@@ -1,3 +1,5 @@
+// Z sizes are 27, 54, and 81
+
 module qc_ldpc_encoder #(
     parameter int Z = 54,              // circulant size
     parameter int NUM_INFO_BLKS = 20,  // number of info blocks
@@ -13,7 +15,8 @@ module qc_ldpc_encoder #(
 
     // -------------------------------------------------------------------------
     // Memory block Module Generated based on parameter input for the matrix 
-    // prototype tables provided in the Standard 
+    // prototype tables provided in the Standard. Should except parameter for LUT
+    // Or BRAM based on a parameter to test area and speed tradeoffs of the two
     // Should be generic enough to fill the needs of all the different coding rates
     // Atleast for n=1296 and z=54
     // -------------------------------------------------------------------------
