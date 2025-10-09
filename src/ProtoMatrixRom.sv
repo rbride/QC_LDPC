@@ -1,4 +1,5 @@
-
+`timescale 1ns / 1ps
+`default_nettype none
 // -------------------------------------------------------------------------
 // LUT Based Memory Module, Has the benefits of Being Asynchronous and fast
 // Given Z we can determine the total Codelength as the 5/6 Rate Parity Matrix Has 
