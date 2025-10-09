@@ -8,19 +8,6 @@ The circuit has the ability to encode LDPC code blocks of all three of the stand
 Inside ofthe source folder are included .mem files which define the base prototype matrix found in <ins>IEEE Std 802.11-2020</ins>, whose values define the shifts of the ZxZ identity matrix used to encode data found in . Each value is stored as in hexadecimal format, and the "-" values present in the prototype matrix found in the standard are replaced with the highest value of what would be the memory width required to store the matrix entires in memory as none of the Z values used for the given code block length reaches the maximum value of the data width which is used to store it inside of the defined code. _Note: These "-" values are used to define a zero matrix instead of a shift of the ZxZ identity matrix_  
 
 
-<style>
-table th:first-of-type {
-    width: 10%;
-}
-table th:nth-of-type(2) {
-    width: 20%;
-}
-table th:nth-of-type(3) {
-    width: 20%;
-}
-
-</style>
-
 ## QC LDPC Parameters defined by the standard
 | Coding Rate  | Information Block Bits | Total Codeword Bits
 | :-----: | :-----: | :-----: |
