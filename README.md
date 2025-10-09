@@ -1,11 +1,17 @@
 # QC_LDPC
-RTL design for a "5G" multigigabit QC-LDPC pipelined encoder in System Verilog. 
+RTL design for a "5G" multigigabit QC-LDPC pipelined encoder in System Verilog. Overall design was based on the following [research paper](#1) as well as other collected research documents 
 
-Implements code length of 1296, at a rate of 5/6, and uses the RU Algorithm in conjunction with various other optimizations derived from research publications to create an high throughput QC-LDPC Encoder. 
+The circuit has the ability to encode LDPC code blocks of all three of the standard lengths, _648, 1296,_ and _1944_ at a rate <ins>5/6</ins>, and uses the RU Algorithm in conjunction with extensive pipelining as well as various other discovered optimizations derived from research publications to create an high throughput QC-LDPC Encoder. 
 
-This Project includes .mem files which define the base parity matrix whose values define the shifts of the ZxZ identity matrix used to encode data. Each value is stored as a hex, and the - values present in the defined matrix found in the standard are replaced with the highest value of what would be the memory width required to store the matrix entires in memory. 
 
-# QC LDPC Parameters defined by the standard
+## Included Resources
+Inside ofthe source folder are included .mem files which define the base prototype matrix found in <ins>IEEE Std 802.11-2020</ins>, whose values define the shifts of the ZxZ identity matrix used to encode data found in . Each value is stored as in hexadecimal format, and the "-" values present in the prototype matrix found in the standard are replaced with the highest value of what would be the memory width required to store the matrix entires in memory as none of the Z values used for the given code block length reaches the maximum value of the data width which is used to store it inside of the defined code. _Note: These "-" values are used to define a zero matrix instead of a shift of the ZxZ identity matrix_  
+
+
+
+
+
+## QC LDPC Parameters defined by the standard
 | Coding rate (R) | LDPC information block length (bits) | LDPC codeword block length(bits)
 | :-----: | :-----: | :-----: |
 | 1/2  | 972  | 1944  |
@@ -20,3 +26,9 @@ This Project includes .mem files which define the base parity matrix whose value
 | 5/6  | 162  | 1944  |
 | 5/6  | 108  | 1296  |
 | 5/6  | 540  | 648  |
+
+
+
+## References
+<a id="1">[1]</a> 
+Y. Jung, C. Chung, J. Kim, and Y. Jung, “7.7Gbps encoder design for IEEE 802.11n/ac Qc-LDPC codes,” 2012 International SoC Design Conference (ISOCC), pp. 215–218, Nov. 2012. doi:10.1109/isocc.2012.6407078 
