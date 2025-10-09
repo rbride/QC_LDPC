@@ -16,11 +16,10 @@ module ProtoMatrixRom #(
     output     logic [CODEWORD_LEN-1:0] data
 ); 
     
-    /* Note: "-" (zero block/skip) values are stored as the maximum value
-    available for the given WIDTH as none of the possible Z values are equal to 
-    The maximum value of the WIDTH*/
+    /* Note: "-" (zero block/skip) values are stored as the maximum value available for the 
+    given WIDTH as none of the possible Z values are equal to The maximum value of the WIDTH*/
     logic [WIDTH-1:0] memory [DEPTH-1:0];
-    // Initialize memory from file
+
     initial begin
         if (Z == 27) begin
             $readmemh("ProtoMatrixRom_27.mem", memory);
