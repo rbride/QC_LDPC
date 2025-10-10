@@ -29,3 +29,8 @@ Inside ofthe source folder are included .mem files which define the base prototy
 ## References
 <a id="1">[1]</a> 
 Y. Jung, C. Chung, J. Kim, and Y. Jung, “7.7Gbps encoder design for IEEE 802.11n/ac Qc-LDPC codes,” 2012 International SoC Design Conference (ISOCC), pp. 215–218, Nov. 2012. doi:10.1109/isocc.2012.6407078 
+
+
+
+### TODO:
+Using parallel accumulators / further pipelining generate functions, further generalize so that given a requested Throughput rate, the circuit will be generated to perform more calculations a given cycle taking up more space on the chip but to have higher throughput given inputs

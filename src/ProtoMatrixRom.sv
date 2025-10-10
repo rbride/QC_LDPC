@@ -8,13 +8,13 @@
 // -------------------------------------------------------------------------
 module ProtoMatrixRom #(
     parameter int Z = 54,                   
-    parameter int CODEWORD_LEN = Z * 24,
-    parameter int WIDTH = $clog2(Z), //Width needed to store values from 0 to Z-1
-    parameter int DEPTH = 24*4,   //The depth would differ if the rate changed 
-    parameter int ADDRW = $clog2(DEPTH)     
+    parameter int WIDTH = 6, //Clog2(Z)
+    //Provided Prototype Matrix is 24x4 for all rates and code lengths in IEEE Std. 
+    parameter int DEPTH = 96,   
+    parameter int ADDRW = 7    //Clog2(Depth)
 )(
     input wire logic [ADDRW-1:0] addr,
-    output     logic [CODEWORD_LEN-1:0] data
+    output     logic [WIDTH-1:0] data 
 ); 
     
     /* Note: "-" (zero block/skip) values are stored as the maximum value available for the 
