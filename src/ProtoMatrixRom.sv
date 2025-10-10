@@ -37,3 +37,5 @@ module ProtoMatrixRom #(
         data = memory[addr];
     end
 endmodule
+
+//parameter int ARRAY_VALUE[4] = {1,3,5,10};
