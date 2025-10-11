@@ -2,8 +2,37 @@
 `default_nettype none
 
 //at compilation provide the requested number of supported blk Lengths 
-//If one the design synthesizes a single block based around 
-`define NUM_Z   3
+`define NUM_SUPPORTED_BLK_LEN                   3
+`define NUM_INFO_BLKS_PER_CODE_BLK              20
+`define NUM_PARITY_BLKS_PER_CODE_BLK            4
+// 1 = BRAM     0 = LUT     
+`define ROM_TYPE                                1
+
+//Top level of the design, feeds data into the Encoder, shoves data out
+//Shoves data out in an always_comb to seperate it into a different always block 
+//Supported Z values are defined as just Stored values, if you want to make it dependent upon
+//A higher level block that controls this in your design, re-design the top level accordingly 
+module QCLDPCController #(
+    parameter int NUM_Z =               `NUMBER_OF_SUPPORTED_BLOCK_LENGTHS,
+    parameter int ARRAY_VALUE[NUM_Z] = {27, 54, 81},
+
+)(
+    input logic CLK,
+    input logic rst_n,
+    //The input of data into this block is not defined at all. Manage this in an incorperating design
+    //As a result the input width is just defined as the maximum possible value 
+    input logic [81-1:0] data_in,
+    output logic [(81*`NUM_PARITY_BLKS_PER_CODE_BLK)-1:0] p_data_out
+);
+
+    
+
+
+
+endmodule
+
+
+
 
 // Standard Z sizes are 27, 54, and 81
 module qc_ldpc_encoder #(
