@@ -48,7 +48,7 @@ module QCLDPCController #(
 
     QCLDPCEncoder #(                 
                 .NUM_Z (NUM_Z),
-                .MAX_Z ()
+                .MAX_Z (MAX_Z),
                 .NUM_INFO_BLKS  ( `NUM_INFO_BLKS_PER_CODE_BLK ),
                 .NUM_PARITY_BLKS( `NUM_PARITY_BLKS_PER_CODE_BLK ),
                 )
@@ -66,6 +66,7 @@ endmodule
 // Standard Z sizes are 27, 54, and 81
 module QCLDPCEncoder #(
     parameter int NUM_Z = 1,
+    parameter int MAX_Z = 81,
     parameter int NUM_INFO_BLKS = 20,  // number of info blocks
     parameter int NUM_PARITY_BLKS = 4, // number of parity blocks (also number of rows in the proto matrix)
     parameter int TOTAL_BLKS = NUM_INFO_BLKS + NUM_PARITY_BLKS,
@@ -78,10 +79,10 @@ module QCLDPCEncoder #(
     output logic [Z-1:0]           parity_blk[NUM_PARITY_BLKS-1:0], // parity blocks
 );
 
-    localparam int PmRomWidth = $clog2(Z); //Width needed to store values from 0 to Z-1
-    //localparam int PM_ROM_DEPTH = 24*4;   //The depth would differ if the rate changed 
-    localparam int PmRomDepth = (NUM_INFO_BLKS+NUM_PARITY_BLKS)*NUM_PARITY_BLKS;
-    localparam int PmRomAddrW = $clog2(PmRomDepth);   
+
+    localparam int PmRomDepth = (NUM_INFO_BLKS+NUM_PARITY_BLKS) * NUM_PARITY_BLKS * NUM_Z;
+    localparam int PmRomWidth = $clog2(MAX_Z);
+    localparam int PmRomAddrW = $clog2(PmRomDepth)
     
     wire shift_addr  [PmRomAddrW-1:0];
     wire shift_value [PmRomWidth-1:0];
@@ -98,14 +99,40 @@ module QCLDPCEncoder #(
     // while creating a somewhat more generic circuit that is potentially capable,
     // of on the fly swithching between code lenghts and maybe even rates. 
     // -------------------------------------------------------------------------
-    ProtoMatrixRom #(.Z(Z), .WIDTH(PM_ROM_WIDTH), 
-                            .DEPTH(PROTO_MATRIX_DEPTH), 
-                            .ADDRW(PROTO_MATRIX_ADDRW)
-                    )  
-        GenROM (
-            .addr(shift_addr),
-            .data(shift_value)   
-    );
+    
+    
+    
+    generate
+        case (`ROM_TYPE)
+            0: begin: Single_LUT
+                ProtoMatrixRom_SingleLUT #(   
+                                .Z(Z), 
+                                .WIDTH(PmRomWidth), 
+                                .DEPTH(PmRomDepth), 
+                                .ADDRW(PmRomAddrW)
+                            )  
+                    GenROM (
+                            .addr(shift_addr),
+                            .data(shift_value)   
+            end
+
+            1: begin: Multi_LUT 
+
+
+
+            end
+            
+
+            //TODO 
+            2: begin
+
+            end 
+
+            default: begin : assert_invalid_cfg
+                $fatal( 1, "Invalid ROM Configuration Selected - Aborting");
+            end
+        endcase 
+    endgenerate
     
     // -------------------------------------------------------------------------
     // Barrel Shifting function called N-M times based, must be in parallel
