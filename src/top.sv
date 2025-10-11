@@ -78,7 +78,6 @@ module QCLDPCEncoder #(
     output logic [Z-1:0]           parity_blk[NUM_PARITY_BLKS-1:0], // parity blocks
 );
 
-
     localparam int PmRomDepth = (NUM_INFO_BLKS+NUM_PARITY_BLKS) * NUM_PARITY_BLKS * NUM_Z;
     localparam int PmRomWidth = $clog2(MAX_Z);
     localparam int PmRomAddrW = $clog2(PmRomDepth)
@@ -91,15 +90,37 @@ module QCLDPCEncoder #(
     //Define storage registers for the intermediate values used by accumulators one for each generated Parity Block
     logic [Z-1:0] accum_regs [0:$clog2(NUM_PARITY_BLKS)-1]; 
 
+
     // -------------------------------------------------------------------------
-    // Memory block Module Generated based on parameter input for the matrix 
-    // prototype tables provided in the Standard. 
-    // Potential Expand to: Accept parameters for LUT Or BRAM based on a parameter
-    // to test area and speed tradeoffs of the two (would change timing), however,
-    // by concating columns together, I would be able to reduce number of cycles
-    // while creating a somewhat more generic circuit that is potentially capable,
-    // of on the fly swithching between code lenghts and maybe even rates. 
+    // Barrel Shifting function called N-M times based, must be in parallel
+    // thus defined as function automatic as it should be called dynamically
     // -------------------------------------------------------------------------
+    function automatic logic [Z-1:0] CyclicShifter(
+        input logic [Z-1:0]                 msgBlk,
+        input logic [PmRomWidth-1:0]        shiftVal,
+    )
+
+        return ((msgBlk << shiftVal) | (msgBlk >> (Z - shiftVal)));
+    endfunction
+
+  
+    // genvar c;
+    // generate
+    // for (c = 0; c < ROWBITS; c = c + 1) begin: test
+    //     always @(posedge sysclk) begin
+    //         temp[c] <= 1'b0;
+    //     end
+    // end
+    // endgenerate
+    // Generates the following 4
+    //always @(posedge sysclk) temp[0] <= 1'b0;
+    //always @(posedge sysclk) temp[1] <= 1'b0;
+    //always @(posedge sysclk) temp[2] <= 1'b0;
+    //always @(posedge sysclk) temp[3] <= 1'b0;
+    
+    //Assert the Reset of the Accum Registers in a generic Always block 
+
+    genvar inari;
     generate
         case (`ROM_TYPE)
             0: begin : Single_LUT_ROM
@@ -113,6 +134,14 @@ module QCLDPCEncoder #(
                             .addr(shift_addr),
                             .data(shift_value)
                     );
+
+                for ( inari = 0; inari < NUM_PARITY_BLKS; inari++) begin
+                    always_ff @(posedge CLK) begin
+                        if()
+                        accum_regs[inari] << accum_regs[inari] ^
+                    
+                    end
+                end
             end
 
             1: begin : Multi_LUT_ROM 
@@ -145,27 +174,23 @@ module QCLDPCEncoder #(
                         .data_out(shift_values)
                     );
             end 
-            
+
             default: begin : assert_invalid_cfg
                 $fatal(1, "Invalid ROM Configuration Selected - Aborting");
             end
         endcase 
     endgenerate
     
+    
+    
+   
+
+
+
     // -------------------------------------------------------------------------
-    // Barrel Shifting function called N-M times based, must be in parallel
-    // thus defined as function automatic as it should be called dynamically
+    // This is a small outward nested always_ff block that is used for counting
+    // Cycles, then finally doing the parity additions and 
     // -------------------------------------------------------------------------
-    function automatic logic [Z-1:0] CyclicShifter(
-        input logic [Z-1:0]                 msgBlk,
-        input logic [PmRomWidth-1:0]        shiftVal,
-    )
-
-        return ((msgBlk << shiftVal) | (msgBlk >> (Z - shiftVal)));
-    endfunction
-
-
-
     always_ff @(posedge CLK or negedge rst_n) begin
         if(!rst_n) begin
             //Flush 
@@ -177,14 +202,13 @@ module QCLDPCEncoder #(
 
 
 
-
-
 endmodule
 
 
 // Given the undefined (See to tired to remember and look it up) Nature 
 // Of the shift operator, define in test bench a check that checks to see
 // that the shift is actually occuring the correct number of times in whatever
+// since the input isn't an int
 // wacky crazy simulator and systhesis that occurs should be fine
 
 
@@ -201,3 +225,17 @@ endmodule
 //Note the design is mostly suitable for only the highest rate at this point
 //After completetion consider restructuring the Memory so that it compacts given
 //inputs for slower rates. 
+
+
+
+  // -------------------------------------------------------------------------
+    // Memory block Module Generated based on parameter input for the matrix 
+    // prototype tables provided in the Standard. 
+    // Potential Expand to: Accept parameters for LUT Or BRAM based on a parameter
+    // to test area and speed tradeoffs of the two (would change timing), however,
+    // by concating columns together, I would be able to reduce number of cycles
+    // while creating a somewhat more generic circuit that is potentially capable,
+    // of on the fly swithching between code lenghts and maybe even rates. 
+    // -------------------------------------------------------------------------
+    
+    
