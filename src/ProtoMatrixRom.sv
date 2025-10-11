@@ -39,3 +39,41 @@ module ProtoMatrixRom #(
 endmodule
 
 //parameter int ARRAY_VALUE[4] = {1,3,5,10};
+/*
+`define X 3
+
+module my_module #(parameter int X = `X) (
+    input int arr [X]
+);
+    initial begin
+        $display("X = %0d", X);
+        foreach (arr[i])
+            $display("arr[%0d] = %0d", i, arr[i]);
+    end
+endmodule
+
+module top;
+    int my_array [`X] = '{10, 20, 30};
+    my_module #(.X(`X)) inst (.arr(my_array));
+endmodule
+
+
+If you want the module to have a parameterized array, use a parameter array of size `X.
+For an input port, you’ll use a packed or unpacked array depending on your needs.
+
+Here’s an example for integer array inputs:
+
+module my_module #(
+    parameter int X = `X
+) (
+    input int data_in [X]   // Unpacked array of X integers
+);
+    initial begin
+        $display("Array length = %0d", X);
+        for (int i = 0; i < X; i++) begin
+            $display("data_in[%0d] = %0d", i, data_in[i]);
+        end
+    end
+endmodule
+
+*/
