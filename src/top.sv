@@ -99,9 +99,6 @@ module QCLDPCEncoder #(
     // while creating a somewhat more generic circuit that is potentially capable,
     // of on the fly swithching between code lenghts and maybe even rates. 
     // -------------------------------------------------------------------------
-    
-    
-    
     generate
         case (`ROM_TYPE)
             0: begin: Single_LUT
@@ -113,23 +110,31 @@ module QCLDPCEncoder #(
                             )  
                     GenROM (
                             .addr(shift_addr),
-                            .data(shift_value)   
+                            .data(shift_value)
+                    );
             end
 
             1: begin: Multi_LUT 
-
-
-
+                ProtoMatrixRom_MultiLUT #(
+                                .NUM_Z(NUM_Z),
+                                .Z_VALUES(Z_VALUES),
+                                .DEPTH(PmRomDepth),
+                                .WIDTH(PmRomWidth),
+                                .ADDRW(PmRomAddrW)
+                            )
+                    GenROM (
+                        .addr(shift_addr),
+                        .data(shift_value)
+                    ); 
             end
             
-
             //TODO 
             2: begin
 
             end 
 
             default: begin : assert_invalid_cfg
-                $fatal( 1, "Invalid ROM Configuration Selected - Aborting");
+                $fatal(1, "Invalid ROM Configuration Selected - Aborting");
             end
         endcase 
     endgenerate
