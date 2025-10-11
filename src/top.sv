@@ -58,8 +58,7 @@ module QCLDPCController #(
             .req_z(req_Z),  
             .info_blk(data_in),
             .parity_blk(parity_blk)
-
-)
+        );
 
 endmodule
 
@@ -86,6 +85,8 @@ module QCLDPCEncoder #(
     
     wire shift_addr  [PmRomAddrW-1:0];
     wire shift_value [PmRomWidth-1:0];
+    //The below is only relevant if using the BRAM Based ROM
+    wire [PmRomWidth-1:0] shift_values [0:NUM_PARITY_BLKS];
 
     //Define storage registers for the intermediate values used by accumulators one for each generated Parity Block
     logic [Z-1:0] accum_regs [0:$clog2(NUM_PARITY_BLKS)-1]; 
@@ -101,7 +102,7 @@ module QCLDPCEncoder #(
     // -------------------------------------------------------------------------
     generate
         case (`ROM_TYPE)
-            0: begin: Single_LUT
+            0: begin : Single_LUT_ROM
                 ProtoMatrixRom_SingleLUT #(   
                                 .Z(Z), 
                                 .WIDTH(PmRomWidth), 
@@ -114,7 +115,7 @@ module QCLDPCEncoder #(
                     );
             end
 
-            1: begin: Multi_LUT 
+            1: begin : Multi_LUT_ROM 
                 ProtoMatrixRom_MultiLUT #(
                                 .NUM_Z(NUM_Z),
                                 .Z_VALUES(Z_VALUES),
@@ -128,11 +129,23 @@ module QCLDPCEncoder #(
                     ); 
             end
             
-            //TODO 
-            2: begin
-
+            //TODO Possible error could be improper port defintion of Z_values but whatever
+            //Same for .data_out since multidimentional Array Port declarations can be :(
+            2: begin : BRAM_ROM
+                ProtoMatrixRom_BRAM #(
+                                .NUM_Z(NUM_Z),
+                                .NUM_PARITY_BLKS(NUM_PARITY_BLKS),
+                                .Z_VALUES(Z_VALUES),
+                                .DEPTH(PmRomDepth),
+                                .WIDTH(PmRomWidth),
+                                .ADDRW(PmRomAddrW)
+                                )
+                    GenRom (
+                        .addr(shift_addr),
+                        .data_out(shift_values)
+                    );
             end 
-
+            
             default: begin : assert_invalid_cfg
                 $fatal(1, "Invalid ROM Configuration Selected - Aborting");
             end
