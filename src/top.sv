@@ -62,7 +62,16 @@ module QCLDPCController #(
 
 endmodule
 
-// Standard Z sizes are 27, 54, and 81
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// The module below defines the actual encoder itself, generation fo this encoder 
+// is highly parameterized and should be structured in such a way as to be 
+// highly re-usable and thus utilizes as generic definitions as possible within
+//
+// TODO: 
+//          Add parameters and to perform the number of Column Xoring and Accumulation requested 
+//          instead of the defined 1, to allow for changes in the number of pipeline stages 
+//          at the cost of greater area, and higher timing requirements.  
+/////////////////////////////////////////////////////////////////////////////////////////////////
 module QCLDPCEncoder #(
     parameter int NUM_Z = 1,
     parameter int MAX_Z = 81,
@@ -73,7 +82,7 @@ module QCLDPCEncoder #(
 ) (
     input  logic                   CLK,
     input  logic                   rst_n,
-    input  logic [NUM_Z-1:0]       req_z,
+    input  logic [NUM_Z-1:0]       req_z,      //NOTE: Must always be ONE_Hot otherwise its going to give an error
     input  logic [Z-1:0]           info_blk, // input blocks
     output logic [Z-1:0]           parity_blk[NUM_PARITY_BLKS-1:0], // parity blocks
 );
@@ -82,14 +91,15 @@ module QCLDPCEncoder #(
     localparam int PmRomWidth = $clog2(MAX_Z);
     localparam int PmRomAddrW = $clog2(PmRomDepth)
     
-    wire shift_addr  [PmRomAddrW-1:0];
-    wire shift_value [PmRomWidth-1:0];
-    //The below is only relevant if using the BRAM Based ROM
+    //TODO: Investigate how restruturing the rom to be groups of 4 values at an address or in a row affects sythesis
+    wire shift_addr  [PmRomAddrW-1:0];   
     wire [PmRomWidth-1:0] shift_values [0:NUM_PARITY_BLKS];
 
     //Define storage registers for the intermediate values used by accumulators one for each generated Parity Block
     logic [Z-1:0] accum_regs [0:$clog2(NUM_PARITY_BLKS)-1]; 
 
+    //Counter Block for counting cycle number
+    logic [$clog2(NUM_INFO_BLKS)-1:0] c_cnt;
 
     // -------------------------------------------------------------------------
     // Barrel Shifting function called N-M times based, must be in parallel
@@ -99,67 +109,45 @@ module QCLDPCEncoder #(
         input logic [Z-1:0]                 msgBlk,
         input logic [PmRomWidth-1:0]        shiftVal,
     )
-
         return ((msgBlk << shiftVal) | (msgBlk >> (Z - shiftVal)));
     endfunction
 
-  
-    // genvar c;
-    // generate
-    // for (c = 0; c < ROWBITS; c = c + 1) begin: test
-    //     always @(posedge sysclk) begin
-    //         temp[c] <= 1'b0;
-    //     end
-    // end
-    // endgenerate
-    // Generates the following 4
-    //always @(posedge sysclk) temp[0] <= 1'b0;
-    //always @(posedge sysclk) temp[1] <= 1'b0;
-    //always @(posedge sysclk) temp[2] <= 1'b0;
-    //always @(posedge sysclk) temp[3] <= 1'b0;
-    
-    //Assert the Reset of the Accum Registers in a generic Always block 
-
-    genvar inari;
     generate
         case (`ROM_TYPE)
             0: begin : Single_LUT_ROM
                 ProtoMatrixRom_SingleLUT #(   
                                 .Z(Z), 
+                                .NUM_PARITY_BLKS(NUM_PARITY_BLKS),
                                 .WIDTH(PmRomWidth), 
                                 .DEPTH(PmRomDepth), 
                                 .ADDRW(PmRomAddrW)
+
                             )  
                     GenROM (
                             .addr(shift_addr),
-                            .data(shift_value)
+                            .data_out(shift_value)
                     );
 
-                for ( inari = 0; inari < NUM_PARITY_BLKS; inari++) begin
-                    always_ff @(posedge CLK) begin
-                        if()
-                        accum_regs[inari] << accum_regs[inari] ^
-                    
-                    end
-                end
+               
             end
 
             1: begin : Multi_LUT_ROM 
                 ProtoMatrixRom_MultiLUT #(
                                 .NUM_Z(NUM_Z),
                                 .Z_VALUES(Z_VALUES),
+                                .NUM_PARITY_BLKS(NUM_PARITY_BLKS),
                                 .DEPTH(PmRomDepth),
                                 .WIDTH(PmRomWidth),
                                 .ADDRW(PmRomAddrW)
                             )
                     GenROM (
-                        .addr(shift_addr),
-                        .data(shift_value)
+                            .addr(shift_addr),
+                            .data_out(shift_value)
                     ); 
             end
             
             //TODO Possible error could be improper port defintion of Z_values but whatever
-            //Same for .data_out since multidimentional Array Port declarations can be :(
+            //Same for .data_out since multidimentional Array Port declarations can be...
             2: begin : BRAM_ROM
                 ProtoMatrixRom_BRAM #(
                                 .NUM_Z(NUM_Z),
@@ -170,8 +158,8 @@ module QCLDPCEncoder #(
                                 .ADDRW(PmRomAddrW)
                                 )
                     GenRom (
-                        .addr(shift_addr),
-                        .data_out(shift_values)
+                            .addr(shift_addr),
+                            .data_out(shift_values)
                     );
             end 
 
@@ -180,12 +168,17 @@ module QCLDPCEncoder #(
             end
         endcase 
     endgenerate
-    
-    
-    
-   
 
 
+    //     genvar inari;
+    //  for ( inari = 0; inari < NUM_PARITY_BLKS; inari++) begin
+    //                 always_ff @(posedge CLK) begin
+    //                     if()
+    //                     accum_regs[inari] << accum_regs[inari] ^
+                    
+    //                 end
+    //             end
+    
 
     // -------------------------------------------------------------------------
     // This is a small outward nested always_ff block that is used for counting
@@ -193,7 +186,7 @@ module QCLDPCEncoder #(
     // -------------------------------------------------------------------------
     always_ff @(posedge CLK or negedge rst_n) begin
         if(!rst_n) begin
-            //Flush 
+            c_cnt <= '0;
 
         end else 
             
@@ -205,37 +198,3 @@ module QCLDPCEncoder #(
 endmodule
 
 
-// Given the undefined (See to tired to remember and look it up) Nature 
-// Of the shift operator, define in test bench a check that checks to see
-// that the shift is actually occuring the correct number of times in whatever
-// since the input isn't an int
-// wacky crazy simulator and systhesis that occurs should be fine
-
-
-// assert that at no point the memory data is unknown because 
-// the barrel shift function by design cast to int and it is necessary that 
-// there won't be any X or Z values contained 
-//assert (!$isunknown(signal))
-//        a = signal;
-// else
-//   $error("signal is unknown");
-
-
-
-//Note the design is mostly suitable for only the highest rate at this point
-//After completetion consider restructuring the Memory so that it compacts given
-//inputs for slower rates. 
-
-
-
-  // -------------------------------------------------------------------------
-    // Memory block Module Generated based on parameter input for the matrix 
-    // prototype tables provided in the Standard. 
-    // Potential Expand to: Accept parameters for LUT Or BRAM based on a parameter
-    // to test area and speed tradeoffs of the two (would change timing), however,
-    // by concating columns together, I would be able to reduce number of cycles
-    // while creating a somewhat more generic circuit that is potentially capable,
-    // of on the fly swithching between code lenghts and maybe even rates. 
-    // -------------------------------------------------------------------------
-    
-    
