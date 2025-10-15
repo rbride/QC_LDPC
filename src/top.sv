@@ -128,7 +128,6 @@ module QCLDPCEncoder #(
                             .data_out(shift_value)
                     );
 
-               
             end
 
             1: begin : Multi_LUT_ROM 
@@ -170,6 +169,8 @@ module QCLDPCEncoder #(
     endgenerate
 
 
+    
+
     //     genvar inari;
     //  for ( inari = 0; inari < NUM_PARITY_BLKS; inari++) begin
     //                 always_ff @(posedge CLK) begin
@@ -192,6 +193,8 @@ module QCLDPCEncoder #(
             
         end
     end
+
+    always_comb
 
 
 

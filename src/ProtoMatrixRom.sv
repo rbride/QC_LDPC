@@ -60,7 +60,6 @@ module ProtoMatrixRom_MultiLUT #(
     parameter int ADDRW             =   9,
     parameter int NUM_PARITY_BLKS   =   4
 )(
-    input wire logic [NUM_Z-1:0] req_z,
     input wire logic [ADDRW-1:0] addr,
     output           [WIDTH-1:0] data_out [0:$clog2(NUM_PARITY_BLKS)-1]
 );
