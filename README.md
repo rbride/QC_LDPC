@@ -33,4 +33,4 @@ Y. Jung, C. Chung, J. Kim, and Y. Jung, “7.7Gbps encoder design for IEEE 802.1
 
 
 ### TODO:
-Using parallel accumulators / further pipelining generate functions, further generalize so that given a requested Throughput rate, the circuit will be generated to perform more calculations a given cycle taking up more space on the chip but to have higher throughput given inputs
+Using parallel accumulators and further pipelining in properly structured generate functions, further generalize design so that given a requested Through-put rate, the circuit will be generated such that it perform more calculations in a given cycle, sacrificing area and higher timing requirements for greater throughput (at some given clk frequency) 
