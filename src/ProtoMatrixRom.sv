@@ -41,7 +41,7 @@ module ProtoMatrixRom_SingleLUT #(
         end
     end
 
-    //TODO: For the changle to allow multiple column Computation per cycle, this will need to be changed.
+    //TODO: For the change to allow multiple column Computation per cycle, this will need to be changed.
     always_comb begin
         for(int i=0; i<NUM_PARITY_BLKS; i++) begin
             data_out[i] = memory[addr + ((i*(DEPTH/NUM_Z))-1)]; 

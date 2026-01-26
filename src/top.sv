@@ -172,8 +172,8 @@ module QCLDPCEncoder #(
         endcase 
     endgenerate
 
-    function 
     
+
     function automatic logic [Z-1:0] CyclicShifter(
         input logic [Z-1:0]                 msgBlk,
         input logic [PmRomWidth-1:0]        shiftVal,
@@ -181,17 +181,19 @@ module QCLDPCEncoder #(
         return ((msgBlk << shiftVal) | (msgBlk >> (Z - shiftVal)));
     endfunction
     
-    //     genvar inari;
-    //  for ( inari = 0; inari < NUM_PARITY_BLKS; inari++) begin
-    //                 always_ff @(posedge CLK) begin
-    //                     if()
-    //                     accum_regs[inari] << accum_regs[inari] ^
-                    
-    //                 end
-    //             end
-    
 
-    function automatic logic 
+    
+    // TODO  TODO TODO TODO TODO TODO TODO MAKE SURE You do nothing for max value 
+    // TODO TODO TODO DEFINE A WIDTH THAT CORRESPONDS TO 
+    // as that is the storage value for do nothing or whatever don't shift
+    // Function uses concat then slice approach, TODO: look into multi-stage Mux for speed trade offs
+    function automatic logic [Z-1:0] Right_CyclicShifter(
+        input logic [Z-1:0]             data,
+        input logic [PmRomWidth-1:0]    shiftval
+    );
+    logic [2*Z]
+
+    endfunction
 
     // -------------------------------------------------------------------------
     // This is a small outward nested always_ff block that is used for counting
