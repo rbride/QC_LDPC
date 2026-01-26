@@ -31,11 +31,12 @@ module QCLDPCController #(
 )(
     input logic CLK,
     input logic rst_n,
+    input logic enable,
 
     //assert   assert property (@(posedge clk) $onehot(req_Z)) 
     input logic [NUM_Z-1:0] req_z,  
     
-    //The input of data into this block is not defined at all. Manage this in an incorperating design
+    //TODO: The input of data into this block is not defined at all. Manage this in an incorperating design
     //As a result the input width is just defined as the maximum possible value 
     input logic [MAX_Z-1:0] data_in,
     output logic [(MAX_Z*(NUM_PAR_BLK+NUM_INFO_BLKS))-1:0] p_data_out
@@ -44,7 +45,8 @@ module QCLDPCController #(
     //Don't need to initialize because it gets written to anyway and it doesn't matter what start values are
     logic [(MAX_Z*(NUM_INFO_BLKS+NUM_PAR_BLK))-1:0] data_buffer;
 
-    logic [MAX_Z-1:0] parity_blk[(NUM_PAR_BLK*MAX_Z)-1:0];
+    logic [MAX_Z-1:0] parity_blk[(NUM_PAR_BLK*MAX_Z)-1:0];    //TODO: Believe this is the wrong width
+
 
     QCLDPCEncoder #(                 
                 .NUM_Z (NUM_Z),
@@ -55,6 +57,7 @@ module QCLDPCController #(
         Encoder (
             .CLK(CLK),
             .rst_n(rst_n),
+            .en_encoder(enable) 
             .req_z(req_Z),  
             .info_blk(data_in),
             .parity_blk(parity_blk)
@@ -82,6 +85,7 @@ module QCLDPCEncoder #(
 ) (
     input  logic                   CLK,
     input  logic                   rst_n,
+    input  logic                   en_encoder,
     input  logic [NUM_Z-1:0]       req_z,      //NOTE: Must always be ONE_Hot otherwise its going to give an error
     input  logic [Z-1:0]           info_blk, // input blocks
     output logic [Z-1:0]           parity_blk[NUM_PARITY_BLKS-1:0], // parity blocks
@@ -96,7 +100,7 @@ module QCLDPCEncoder #(
     wire [PmRomWidth-1:0] shift_values [0:NUM_PARITY_BLKS];
 
     //Define storage registers for the intermediate values used by accumulators one for each generated Parity Block
-    logic [Z-1:0] accum_regs [0:$clog2(NUM_PARITY_BLKS)-1]; 
+    reg [Z-1:0] accum_regs [0:$clog2(NUM_PARITY_BLKS)-1]; 
 
     //Counter Block for counting cycle number
     logic [$clog2(NUM_INFO_BLKS)-1:0] c_cnt;
@@ -168,9 +172,15 @@ module QCLDPCEncoder #(
         endcase 
     endgenerate
 
-
+    function 
     
-
+    function automatic logic [Z-1:0] CyclicShifter(
+        input logic [Z-1:0]                 msgBlk,
+        input logic [PmRomWidth-1:0]        shiftVal,
+    )
+        return ((msgBlk << shiftVal) | (msgBlk >> (Z - shiftVal)));
+    endfunction
+    
     //     genvar inari;
     //  for ( inari = 0; inari < NUM_PARITY_BLKS; inari++) begin
     //                 always_ff @(posedge CLK) begin
@@ -181,15 +191,25 @@ module QCLDPCEncoder #(
     //             end
     
 
+    function automatic logic 
+
     // -------------------------------------------------------------------------
     // This is a small outward nested always_ff block that is used for counting
     // Cycles, then finally doing the parity additions and 
     // -------------------------------------------------------------------------
     always_ff @(posedge CLK or negedge rst_n) begin
         if(!rst_n) begin
-            c_cnt <= '0;
-
-        end else 
+            c_cnt           <= '0;
+            shift_addr      <= '0;
+            foreach (accum_regs[i])
+                accum_regs[i] <= '0;
+        end else if(!en_encoder) begin
+            //Pretty much do nothing just hold
+            c_cnt           <= c_cnt;
+            shift_addr      <= shift_addr;
+        end 
+        //Otherwise start encoding
+        else begin
             
         end
     end
