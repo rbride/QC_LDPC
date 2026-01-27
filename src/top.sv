@@ -102,20 +102,13 @@ module QCLDPCEncoder #(
     //Define storage registers for the intermediate values used by accumulators one for each generated Parity Block
     reg [Z-1:0] accum_regs [0:$clog2(NUM_PARITY_BLKS)-1]; 
 
+    //output of the rotate functions
+    logic [Z-1:0] rotated_data [0:$clog2(NUM_PARITY_BLKS)-1];
+
     //Counter Block for counting cycle number
     logic [$clog2(NUM_INFO_BLKS)-1:0] c_cnt;
 
-    // -------------------------------------------------------------------------
-    // Barrel Shifting function called N-M times based, must be in parallel
-    // thus defined as function automatic as it should be called dynamically
-    // -------------------------------------------------------------------------
-    function automatic logic [Z-1:0] CyclicShifter(
-        input logic [Z-1:0]                 msgBlk,
-        input logic [PmRomWidth-1:0]        shiftVal,
-    )
-        return ((msgBlk << shiftVal) | (msgBlk >> (Z - shiftVal)));
-    endfunction
-
+ 
     generate
         case (`ROM_TYPE)
             0: begin : Single_LUT_ROM
@@ -129,7 +122,7 @@ module QCLDPCEncoder #(
                             )  
                     GenROM (
                             .addr(shift_addr),
-                            .data_out(shift_value)
+                            .data_out(shift_values)
                     );
 
             end
@@ -145,7 +138,7 @@ module QCLDPCEncoder #(
                             )
                     GenROM (
                             .addr(shift_addr),
-                            .data_out(shift_value)
+                            .data_out(shift_values)
                     ); 
             end
             
@@ -173,27 +166,38 @@ module QCLDPCEncoder #(
     endgenerate
 
     
-
-    function automatic logic [Z-1:0] CyclicShifter(
-        input logic [Z-1:0]                 msgBlk,
-        input logic [PmRomWidth-1:0]        shiftVal,
-    )
-        return ((msgBlk << shiftVal) | (msgBlk >> (Z - shiftVal)));
-    endfunction
-    
-
-    
+    // -------------------------------------------------------------------------
+    // Barrel Shifting function called N-M times based, must be in parallel
+    // thus defined as function automatic as it should be called dynamically
+    // -------------------------------------------------------------------------    
     // TODO  TODO TODO TODO TODO TODO TODO MAKE SURE You do nothing for max value 
-    // TODO TODO TODO DEFINE A WIDTH THAT CORRESPONDS TO 
+    // TODO TODO TODO DEFINE A WIDTH THAT CORRESPONDS TO Z that is selected see the top part of notes!!!!
     // as that is the storage value for do nothing or whatever don't shift
     // Function uses concat then slice approach, TODO: look into multi-stage Mux for speed trade offs
     function automatic logic [Z-1:0] Right_CyclicShifter(
         input logic [Z-1:0]             data,
-        input logic [PmRomWidth-1:0]    shiftval
+        input logic [PmRomWidth-1:0]    rotval
     );
-    logic [2*Z]
+    logic [2*Z -1: 0] data_repeated;
+    begin
+        data_repeated = {data, data};
+        //Add a diagram of this working or example of this working from notes or whatever maybe
+        return( data_repeated[ (Z-1) + rotval -: Z]);
+    end 
+    endfunction : Right_CyclicShifter
+    
+    //Call the function for each of the Lanes 
+    genvar inari;
+    generate 
+        for(inari = 0; inari<NUM_PARITY_BLKS; inari++) begin : ROTATE_INST
+            assign rotated_data[i] = Right_CyclicShifter(info_blk ,shift_values[i] )
+        end
 
-    endfunction
+    endgenerate
+
+
+
+
 
     // -------------------------------------------------------------------------
     // This is a small outward nested always_ff block that is used for counting

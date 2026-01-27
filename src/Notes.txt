@@ -1,3 +1,4 @@
+https://www.zeroasic.com/blog/opensta-release Static timing analysis tools
 
 If you don't need to write data at the same time you're reading, you can use a dual port RAM to reduce the number of duplicated RAMs by half.
  Also if you're able to control where the data is stored, you can use banking which would allow you to use 4 smaller BRAMs
@@ -7,6 +8,11 @@ If you don't need to write data at the same time you're reading, you can use a d
  you could run heavily pipelined logic at. Otherwise, if you need to access 4 values every single clock cycle and their
  locations can be anywhere in memory, you'd need to just duplicate RAMs.
 
+This can be seen in the new Cyclical shifter function. We need a defined width that defines
+the width of the registers
+
+I wrote the boilerplate unconnected code for the most part or the surrounding code for the 
+Function and stuff. But now I need to hook it up 
 
 
     // genvar c;
@@ -117,5 +123,9 @@ Currently the hook up of the actual encoder to the memory controller makes no se
 its not paramatized correctly. It needs to be changed so that there are generation characteristics
 that depict and determine if the actual structure itself is aiming to go for multiple speeds or 
 if the goal is a single speed, because the difference is that each constraint will define a 
+different structure.
 
-different structure. Do
+The design either needs to instatiate to a design that either performs the desired single rate of
+encoding, or one that instatiates a larger design that has signal interface/pathways fitting
+the largest possible data width and encoding stuff, and then utilize a smaller section of
+those interfaces when using a slower/lower encoding selection. 
