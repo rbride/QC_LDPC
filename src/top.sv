@@ -1,14 +1,6 @@
 `timescale 1ns / 1ps
 `default_nettype none
-//at compilation provide the requested number of supported blk Lengths 
-`define NUM_SUPPORTED_BLK_LEN                   3
-`define NUM_INFO_BLKS_PER_CODE_BLK              20
-`define NUM_PARITY_BLKS_PER_CODE_BLK            4
-`define HIGHEST_SUPPORTED_Z_VAL                 81
-// 2 = BRAM     1 = LUT (Multiple Rates)    0 = Single Rate LUT (i.e only one speed)
-// For single rate LUT Highest Z supported is also the only Z supported and used   
-`define ROM_TYPE                                1
-/////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Author: Ryan Bride 
 // Create Date: 09/09/2025
 // Module Name: Highspeed Paramatized QC-LDPC Encoder
@@ -17,16 +9,23 @@
 //      defined maximum Z. For implementation inside an actual design, I would suggest 
 //      Implementing a more robust FIFO or whatever you find best suits your Design.
 //      Further the top level of the Controller stores all provided information data into
-//      a singular buffer, recommend that you resuse some already existing buffer for this data
-//      assuming you have one to reduce redundancy and wasteful resource usage.
-//      The designs top level is structured in such a way as to not be standalone for the purpose 
-//      of determine resource utilization assessments that will be performed upon completion
-/////////////////////////////////////////////////////////////////////////////////////////////////
+//      a singular buffer, for space reasons the fifo that I suggested would ideally be storing that
+//      to instead of having a random very long buffer just sitting in this, 
+//
+//  The following Parameters Effect the architectural structure of the module. All other values Throw and Error
+//  ROM_TYPE:  Chooses the Selected ROM Structure used to store Protoype Matrix/Shift Values. 
+//      0 = Single-Rate LUT Based Rom (i.e only one speed and one Proto Matrix defined for that speed)   
+//      1 = Multi-RATE LUT, Simple LUT Based rom that supports 3 seperate Z's
+//      2 = BRAM Based ROM Supporting 3 Seperate Z's  
+//  
+//  
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 module QCLDPCController #(
-    parameter int NUM_Z =               `NUMBER_OF_SUPPORTED_BLOCK_LENGTHS,
-    parameter int MAX_Z =               `HIGHEST_SUPPORTED_Z_VAL,
-    parameter int NUM_INFO_BLKS =       `NUM_INFO_BLKS_PER_CODE_BLK,
-    parameter int NUM_PAR_BLK =         `NUM_PARITY_BLKS_PER_CODE_BLK,
+    parameter int NUM_OF_SUPPORTED_BLOCK_LENGTHS    =               3,
+    parameter int HIGHEST_SUPPORTED_Z_VAL           =               81,
+    parameter int NUM_INFO_BLKS_PER_CODE_BLK        =               20,
+    parameter int NUM_PARITY_BLKS_PER_CODE_BLK      =               4,
+    parameter int ROM_TYPE =                                        1,          
     parameter int ARRAY_VALUE[NUM_Z] =  {27, 54, 81}
 )(
     input logic CLK,
@@ -45,7 +44,7 @@ module QCLDPCController #(
     //Don't need to initialize because it gets written to anyway and it doesn't matter what start values are
     logic [(MAX_Z*(NUM_INFO_BLKS+NUM_PAR_BLK))-1:0] data_buffer;
 
-    logic [MAX_Z-1:0] parity_blk[(NUM_PAR_BLK*MAX_Z)-1:0];    //TODO: Believe this is the wrong width
+    logic [MAX_Z-1:0] parity_blk[(NUM_PAR_BLK*MAX_Z)-1:0];    
 
 
     QCLDPCEncoder #(                 

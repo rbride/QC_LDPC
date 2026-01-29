@@ -1,5 +1,10 @@
 `timescale 1ns / 1ps
 `default_nettype none
+// -------------------------------------------------------------------------
+//
+//  All defined Roms Support the included standard 5/6 rate with the 3 standard Z values of 27,54,81
+//
+// ------------------------------------------------------------------------
 //For yosys (* ram_style = "block" *) selects block RAM
 //for yosys (* ram_style = "distributed" *) selects LUT RAM
 //For Vivado(* rom_style = "block" *) reg [data_size-1:0] myrom [2**addr_size-1:0];
