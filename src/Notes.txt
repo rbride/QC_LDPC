@@ -129,3 +129,70 @@ The design either needs to instatiate to a design that either performs the desir
 encoding, or one that instatiates a larger design that has signal interface/pathways fitting
 the largest possible data width and encoding stuff, and then utilize a smaller section of
 those interfaces when using a slower/lower encoding selection. 
+
+
+//===================================================
+// LDPC ROM example with parameter-driven memory layout
+//===================================================
+
+module ldpc_rom_example #(
+    parameter int WIDTH       = 8,      // width of each ROM entry
+    parameter int DEPTH       = 16,     // number of rows
+    parameter int MEM_LAYOUT  = 0       // 0 = 1D, 1 = 2D
+)(
+    input  logic [$clog2(DEPTH)-1:0] addr,
+    input  logic [2:0] col,           // only used for 2D
+    output logic [WIDTH-1:0] data_out
+);
+
+    // ----------------------------
+    // Generate ROM depending on MEM_LAYOUT
+    // ----------------------------
+    generate
+        if (MEM_LAYOUT == 0) begin : gen_1D
+            // 1D ROM
+            logic [WIDTH-1:0] rom [0:DEPTH-1];
+
+            // Example initialization
+            initial begin
+                for (int i=0; i<DEPTH; i=i+1) rom[i] = i;
+            end
+        end else begin : gen_2D
+            // 2D ROM
+            logic [WIDTH-1:0] rom [0:DEPTH-1][0:4]; // example 5 columns
+
+            // Example initialization
+            initial begin
+                for (int i=0; i<DEPTH; i=i+1)
+                    for (int j=0; j<5; j=j+1)
+                        rom[i][j] = i*10 + j;
+            end
+        end
+    endgenerate
+
+    // ----------------------------
+    // Function to abstract ROM access
+    // ----------------------------
+    function logic [WIDTH-1:0] rom_read(input int r, input int c);
+        // Must be elaboration-time constant (MEM_LAYOUT is a parameter)
+        if (MEM_LAYOUT == 0)
+            rom_read = gen_1D.rom[r];        // 1D access
+        else
+            rom_read = gen_2D.rom[r][c];     // 2D access
+    endfunction
+
+    // ----------------------------
+    // Use the function to drive output
+    // ----------------------------
+    assign data_out = rom_read(addr, col);
+
+endmodule
+
+
+
+`define NUM_SUPPORTED_BLK_LEN                   3
+`define NUM_INFO_BLKS_PER_CODE_BLK              20
+`define NUM_PARITY_BLKS_PER_CODE_BLK            4
+`define HIGHEST_SUPPORTED_Z_VAL                 81
+// For single rate LUT Highest Z supported is also the only Z supported and used   
+`define ROM_TYPE                                1
