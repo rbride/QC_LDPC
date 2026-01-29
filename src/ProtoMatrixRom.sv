@@ -19,37 +19,40 @@
 //final simulation
 // -------------------------------------------------------------------------
 module ProtoMatrixRom_SingleLUT #(
-    parameter int Z = 54,                   
-    parameter int WIDTH = 6, //Clog2(Z)
+    parameter int THE_Z = 54,                   
+    parameter int WIDTH = $clog2(THE_Z), // 6
     //Provided Prototype Matrix is 24x4 for all rates and code lengths in IEEE Std. 
     parameter int DEPTH = 96,   
     parameter int ADDRW = 7,    //Clog2(Depth)
-    parameter int NUM_PARITY_BLKS = 4
+    parameter int NUM_PARITY_BLKS = 4,
+    parameter int P_LVL = 1
 )(
     input wire logic [ADDRW-1:0] addr,
-    output           [WIDTH-1:0] data_out [0:$clog2(NUM_PARITY_BLKS)-1]
+    output           [WIDTH-1:0] data_out [0:$clog2(NUM_PARITY_BLKS*P_LVL)-1]
 ); 
     
     (* ram_style = "distributed" *) logic [WIDTH-1:0] memory [0:DEPTH-1];
 
     initial begin
-        if (Z == 27) begin
+        if (THE_Z == 27) begin
             $readmemh("648B_5_6_ProtoMat.mem", memory);
-        end else if (Z == 54) begin
+        end else if (THE_Z == 54) begin
             $readmemh("1296B_5_6_ProtoMat.mem", memory);
-        end else if (Z == 81) begin
+        end else if (THE_Z == 81) begin
             $readmemh("1944B_5_6_ProtoMat.mem", memory);
         end else begin : assert_invalid_cfg
             $fatal( 1, "Invalid Configuration detected, Unsupported Z value: %0d. Supported values are 27, 54, and 81. 
                     if you need a different Z value, ensure that a file is provided and change the code In 
-                    ProtoMatrixRom.sv to load the .mem file values for your specific Z - aborting", Z);
+                    ProtoMatrixRom.sv to load the .mem file values for your specific Z - aborting", THE_Z);
         end
     end
 
-    //TODO: For the change to allow multiple column Computation per cycle, this will need to be changed.
+    // data_out[i+q] = memory[addr + (( i*(DEPTH/THE_Z) + q )-1)]; 
     always_comb begin
-        for(int i=0; i<NUM_PARITY_BLKS; i++) begin
-            data_out[i] = memory[addr + ((i*(DEPTH/NUM_Z))-1)]; 
+        for(int i=0; i<NUM_PARITY_BLKS*P_LVL; i++) begin
+            for(int q=0; q<P_LVL; q++) begin
+                data_out[i+q] = memory[addr+q +(i*(DEPTH/NUM_PARITY_BLKS)-1)];
+            end
         end
     end
 endmodule
