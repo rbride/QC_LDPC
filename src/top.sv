@@ -77,6 +77,8 @@ module QCLDPCController #(
 
     // -------------------------------------------------------------------------    
     // Generate ROM
+    // TODO: Add more asserts to throw errors when the values given
+    // to these generate functions are proper.
     // -------------------------------------------------------------------------    
     generate
         case (`ROM_TYPE)
@@ -97,9 +99,9 @@ module QCLDPCController #(
 
             1: begin : Multi_LUT_ROM 
                 ProtoMatrixRom_MultiLUT #(
-                                .NUM_Z(NUM_Z),
-                                .Z_VALUES(Z_VALUES),
-                                .NUM_PARITY_BLKS(NUM_PARITY_BLKS),
+                                .NUM_Z(ZsN),
+                                .Z_VALUES(Z_VALUE_ARRAY),
+                                .NUM_PARITY_BLKS(NumPBlks),
                                 .DEPTH(PmRomDepth),
                                 .WIDTH(PmRomWidth),
                                 .ADDRW(PmRomAddrW),
@@ -112,12 +114,12 @@ module QCLDPCController #(
             end
             
             //TODO Possible error could be improper port defintion of Z_values but whatever
-            //Same for .data_out since multidimentional Array Port declarations can be...
+            //Same for .data_out since multidimentional 
             2: begin : BRAM_ROM
                 ProtoMatrixRom_BRAM #(
-                                .NUM_Z(NUM_Z),
-                                .NUM_PARITY_BLKS(NUM_PARITY_BLKS),
-                                .Z_VALUES(Z_VALUES),
+                                .NUM_Z(ZsN),
+                                .NUM_PARITY_BLKS(NumPBlks),
+                                .Z_VALUES(Z_VALUE_ARRAY),
                                 .DEPTH(PmRomDepth),
                                 .WIDTH(PmRomWidth),
                                 .ADDRW(PmRomAddrW),
@@ -135,6 +137,26 @@ module QCLDPCController #(
         endcase 
     endgenerate
 
+
+     // -------------------------------------------------------------------------
+    // Barrel Shifting function called N-M times based, must be in parallel
+    // thus defined as function automatic as it should be called dynamically
+    // Function uses concat then slice approach, TODO: Consider Looking into Dedicated
+    // Explicit Multi-stage mux module for implementation
+    // -------------------------------------------------------------------------
+    function automatic logic [MaxZ-1:0] RightCyclicShifter(
+        input logic [MaxZ-1:0]          data,
+        input logic [PmRomWidth-1:0]    rotval
+    );
+
+    logic [2*MAX_Z -1: 0] data_repeated;
+    begin
+        data_repeated = {data, data};
+        //Add a diagram of this working or example of this working from notes or whatever maybe
+        return( data_repeated[ (Z-1) + rotval -: Z]);
+    end 
+
+    endfunction : RightCyclicShifter
 
 
     // ??? TODO TODO  TODO TODO TODO TODO TODO TODO 
