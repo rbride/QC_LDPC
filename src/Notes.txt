@@ -196,3 +196,26 @@ endmodule
 `define HIGHEST_SUPPORTED_Z_VAL                 81
 // For single rate LUT Highest Z supported is also the only Z supported and used   
 `define ROM_TYPE                                1
+
+
+
+
+/Call the function for each of the Lanes 
+    genvar inari;
+    generate 
+        for(inari = 0; inari<NUM_PARITY_BLKS; inari++) begin : ROTATE_INST
+            assign rotated_data[i] = Right_CyclicShifter(info_blk ,shift_values[i] )
+        end
+
+    endgenerate
+
+
+    // data_out[i+q] = memory[addr + (( i*(DEPTH/THE_Z) + q )-1)]; 
+    always_comb begin
+        for(int i=0; i<NUM_PARITY_BLKS*; i++) begin
+            for(int q=0; q<P_LVL; q++) begin
+                data_out[i+q] = memory[addr+q +(i*(DEPTH/NUM_PARITY_BLKS)-1)];
+            end
+        end
+    end
+endmodule

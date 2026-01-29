@@ -102,7 +102,8 @@ module QCLDPCController #(
                                 .NUM_PARITY_BLKS(NUM_PARITY_BLKS),
                                 .DEPTH(PmRomDepth),
                                 .WIDTH(PmRomWidth),
-                                .ADDRW(PmRomAddrW)
+                                .ADDRW(PmRomAddrW),
+                                .P_LVL(PLvl)
                             )
                     GenROM (
                             .addr(shift_addr),
@@ -119,7 +120,8 @@ module QCLDPCController #(
                                 .Z_VALUES(Z_VALUES),
                                 .DEPTH(PmRomDepth),
                                 .WIDTH(PmRomWidth),
-                                .ADDRW(PmRomAddrW)
+                                .ADDRW(PmRomAddrW),
+                                .P_LVL(PLvl)
                                 )
                     GenRom (
                             .addr(shift_addr),
@@ -135,6 +137,11 @@ module QCLDPCController #(
 
 
 
+    // ??? TODO TODO  TODO TODO TODO TODO TODO TODO 
+    //THE REQUESTED ADDRESS FOR THE MEMORY NEEDS TO BE #of Z * depth / num_z -1
+    // i.e. 81 is 2 in the array, so starting address is 288/3 = 96, *2 = 192 - 1 = 191
+    // * 
+
 
     always_ff @(posedge CLK or negedge rst_n) begin
         if(!rst_n) begin
@@ -145,12 +152,3 @@ module QCLDPCController #(
     
 
 endmodule
-
-/Call the function for each of the Lanes 
-    genvar inari;
-    generate 
-        for(inari = 0; inari<NUM_PARITY_BLKS; inari++) begin : ROTATE_INST
-            assign rotated_data[i] = Right_CyclicShifter(info_blk ,shift_values[i] )
-        end
-
-    endgenerate
