@@ -18,211 +18,53 @@
 //      1 = Multi-RATE LUT, Simple LUT Based rom that supports 3 seperate Z's
 //      2 = BRAM Based ROM Supporting 3 Seperate Z's  
 //  
+//  LEVEL_OF_PARALLELIZATION: Indicates the number of Column calculations done per step. 
+//      if the initial base matrix given is 20 columns of m and 4 rows, it will take 20 steps to do with Par 1
+//      1 step for each Column, if its to it will take 20, and do 2 columns at a time.
+//      Trades througput for dramatically increasing Resource utilization and space. 
+//      Default is 1. 
 //  
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 module QCLDPCController #(
-    parameter int NUM_OF_SUPPORTED_BLOCK_LENGTHS    =               3,
+    parameter int NUM_OF_SUPPORTED_Z                =               3,
     parameter int HIGHEST_SUPPORTED_Z_VAL           =               81,
     parameter int NUM_INFO_BLKS_PER_CODE_BLK        =               20,
-    parameter int NUM_PARITY_BLKS_PER_CODE_BLK      =               4,
-    parameter int ROM_TYPE =                                        1,          
-    parameter int ARRAY_VALUE[NUM_Z] =  {27, 54, 81}
-)(
-    input logic CLK,
-    input logic rst_n,
-    input logic enable,
+    parameter int NUM_PARITY_BLKS_PER_CODE_BLK      =               4,         
+    parameter int ROM_TYPE                          =               1,          
+    parameter int Z_VALUE_ARRAY[NUM_OF_SUPPORTED_Z] =               {27, 54, 81},
+    parameter int LEVEL_OF_PARALLELIZATION          =               1
+);
+    //Creating Alias for readability
+    localparam int MaxZ        = HIGHEST_SUPPORTED_Z_VAL;
+    localparam int NumPBlks    = NUM_PARITY_BLKS_PER_CODE_BLK;
+    localparam int NumIBlks    = NUM_INFO_BLKS_PER_CODE_BLK;
+    localparam int ZsN         = NUM_OF_SUPPORTED_Z; 
+    localparam int PLvl        = LEVEL_OF_PARALLELIZATION;
+
+    //ROM Related Local Params
+    localparam int PM_ROMDEPTHPmRomDepth = (NumIBlks+NumPBlks) * NumPBlks * ZsN;
+    localparam int PmRomWidth = $clog2(MaxZ);
+    localparam int PmRomAddrW = $clog2(PmRomDepth)
+
+    // :( input and output defines outside of ( ) because they depend on the Localparam names 
+    input  logic CLK;
+    input  logic rst_n;
+    input  logic en_enc;
 
     //assert   assert property (@(posedge clk) $onehot(req_Z)) 
-    input logic [NUM_Z-1:0] req_z,  
-    
-    //TODO: The input of data into this block is not defined at all. Manage this in an incorperating design
-    //As a result the input width is just defined as the maximum possible value 
-    input logic [MAX_Z-1:0] data_in,
-    output logic [(MAX_Z*(NUM_PAR_BLK+NUM_INFO_BLKS))-1:0] p_data_out
-);
+    input  logic [ ZsN-1 : 0]                          req_z;   //Unused in ROM_Type 0
+    input  logic [ (MaxZ*PLvl)-1 : 0]                  data_in;  
+    output logic [ (MaxZ*(NumPBlks+NumIBlks))-1 : 0]   p_data_out;
+    // -------------------------------------------------------------------------    
+    // End of Module input declaration
+    // -------------------------------------------------------------------------    
 
     //Don't need to initialize because it gets written to anyway and it doesn't matter what start values are
-    logic [(MAX_Z*(NUM_INFO_BLKS+NUM_PAR_BLK))-1:0] data_buffer;
+    logic [(MaxZ*(NumIBlks+NumPBlks))-1 : 0] data_buffer;
+    logic [MaxZ-1 : 0] parity_blk[(NumPBlks*MaxZ)-1 : 0];    
+    
 
-    logic [MAX_Z-1:0] parity_blk[(NUM_PAR_BLK*MAX_Z)-1:0];    
 
-
-    QCLDPCEncoder #(                 
-                .NUM_Z (NUM_Z),
-                .MAX_Z (MAX_Z),
-                .NUM_INFO_BLKS  ( `NUM_INFO_BLKS_PER_CODE_BLK ),
-                .NUM_PARITY_BLKS( `NUM_PARITY_BLKS_PER_CODE_BLK ),
-                )
-        Encoder (
-            .CLK(CLK),
-            .rst_n(rst_n),
-            .en_encoder(enable) 
-            .req_z(req_Z),  
-            .info_blk(data_in),
-            .parity_blk(parity_blk)
-        );
+    
 
 endmodule
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-// The module below defines the actual encoder itself, generation fo this encoder 
-// is highly parameterized and should be structured in such a way as to be 
-// highly re-usable and thus utilizes as generic definitions as possible within
-//
-// TODO: 
-//          Add parameters and to perform the number of Column Xoring and Accumulation requested 
-//          instead of the defined 1, to allow for changes in the number of pipeline stages 
-//          at the cost of greater area, and higher timing requirements.  
-/////////////////////////////////////////////////////////////////////////////////////////////////
-module QCLDPCEncoder #(
-    parameter int NUM_Z = 1,
-    parameter int MAX_Z = 81,
-    parameter int NUM_INFO_BLKS = 20,  // number of info blocks
-    parameter int NUM_PARITY_BLKS = 4, // number of parity blocks (also number of rows in the proto matrix)
-    parameter int TOTAL_BLKS = NUM_INFO_BLKS + NUM_PARITY_BLKS,
-    parameter int Z_VALUES[NUM_Z] = {27, 54, 81},
-) (
-    input  logic                   CLK,
-    input  logic                   rst_n,
-    input  logic                   en_encoder,
-    input  logic [NUM_Z-1:0]       req_z,      //NOTE: Must always be ONE_Hot otherwise its going to give an error
-    input  logic [Z-1:0]           info_blk, // input blocks
-    output logic [Z-1:0]           parity_blk[NUM_PARITY_BLKS-1:0], // parity blocks
-);
-
-    localparam int PmRomDepth = (NUM_INFO_BLKS+NUM_PARITY_BLKS) * NUM_PARITY_BLKS * NUM_Z;
-    localparam int PmRomWidth = $clog2(MAX_Z);
-    localparam int PmRomAddrW = $clog2(PmRomDepth)
-    
-    //TODO: Investigate how restruturing the rom to be groups of 4 values at an address or in a row affects sythesis
-    wire shift_addr  [PmRomAddrW-1:0];   
-    wire [PmRomWidth-1:0] shift_values [0:NUM_PARITY_BLKS];
-
-    //Define storage registers for the intermediate values used by accumulators one for each generated Parity Block
-    reg [Z-1:0] accum_regs [0:$clog2(NUM_PARITY_BLKS)-1]; 
-
-    //output of the rotate functions
-    logic [Z-1:0] rotated_data [0:$clog2(NUM_PARITY_BLKS)-1];
-
-    //Counter Block for counting cycle number
-    logic [$clog2(NUM_INFO_BLKS)-1:0] c_cnt;
-
- 
-    generate
-        case (`ROM_TYPE)
-            0: begin : Single_LUT_ROM
-                ProtoMatrixRom_SingleLUT #(   
-                                .Z(Z), 
-                                .NUM_PARITY_BLKS(NUM_PARITY_BLKS),
-                                .WIDTH(PmRomWidth), 
-                                .DEPTH(PmRomDepth), 
-                                .ADDRW(PmRomAddrW)
-
-                            )  
-                    GenROM (
-                            .addr(shift_addr),
-                            .data_out(shift_values)
-                    );
-
-            end
-
-            1: begin : Multi_LUT_ROM 
-                ProtoMatrixRom_MultiLUT #(
-                                .NUM_Z(NUM_Z),
-                                .Z_VALUES(Z_VALUES),
-                                .NUM_PARITY_BLKS(NUM_PARITY_BLKS),
-                                .DEPTH(PmRomDepth),
-                                .WIDTH(PmRomWidth),
-                                .ADDRW(PmRomAddrW)
-                            )
-                    GenROM (
-                            .addr(shift_addr),
-                            .data_out(shift_values)
-                    ); 
-            end
-            
-            //TODO Possible error could be improper port defintion of Z_values but whatever
-            //Same for .data_out since multidimentional Array Port declarations can be...
-            2: begin : BRAM_ROM
-                ProtoMatrixRom_BRAM #(
-                                .NUM_Z(NUM_Z),
-                                .NUM_PARITY_BLKS(NUM_PARITY_BLKS),
-                                .Z_VALUES(Z_VALUES),
-                                .DEPTH(PmRomDepth),
-                                .WIDTH(PmRomWidth),
-                                .ADDRW(PmRomAddrW)
-                                )
-                    GenRom (
-                            .addr(shift_addr),
-                            .data_out(shift_values)
-                    );
-            end 
-
-            default: begin : assert_invalid_cfg
-                $fatal(1, "Invalid ROM Configuration Selected - Aborting");
-            end
-        endcase 
-    endgenerate
-
-    
-    // -------------------------------------------------------------------------
-    // Barrel Shifting function called N-M times based, must be in parallel
-    // thus defined as function automatic as it should be called dynamically
-    // -------------------------------------------------------------------------    
-    // TODO  TODO TODO TODO TODO TODO TODO MAKE SURE You do nothing for max value 
-    // TODO TODO TODO DEFINE A WIDTH THAT CORRESPONDS TO Z that is selected see the top part of notes!!!!
-    // as that is the storage value for do nothing or whatever don't shift
-    // Function uses concat then slice approach, TODO: look into multi-stage Mux for speed trade offs
-    function automatic logic [Z-1:0] Right_CyclicShifter(
-        input logic [Z-1:0]             data,
-        input logic [PmRomWidth-1:0]    rotval
-    );
-    logic [2*Z -1: 0] data_repeated;
-    begin
-        data_repeated = {data, data};
-        //Add a diagram of this working or example of this working from notes or whatever maybe
-        return( data_repeated[ (Z-1) + rotval -: Z]);
-    end 
-    endfunction : Right_CyclicShifter
-    
-    //Call the function for each of the Lanes 
-    genvar inari;
-    generate 
-        for(inari = 0; inari<NUM_PARITY_BLKS; inari++) begin : ROTATE_INST
-            assign rotated_data[i] = Right_CyclicShifter(info_blk ,shift_values[i] )
-        end
-
-    endgenerate
-
-
-
-
-
-    // -------------------------------------------------------------------------
-    // This is a small outward nested always_ff block that is used for counting
-    // Cycles, then finally doing the parity additions and 
-    // -------------------------------------------------------------------------
-    always_ff @(posedge CLK or negedge rst_n) begin
-        if(!rst_n) begin
-            c_cnt           <= '0;
-            shift_addr      <= '0;
-            foreach (accum_regs[i])
-                accum_regs[i] <= '0;
-        end else if(!en_encoder) begin
-            //Pretty much do nothing just hold
-            c_cnt           <= c_cnt;
-            shift_addr      <= shift_addr;
-        end 
-        //Otherwise start encoding
-        else begin
-            
-        end
-    end
-
-    always_comb
-
-
-
-endmodule
-
-
