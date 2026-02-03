@@ -139,10 +139,8 @@ module QCLDPCController #(
 
 
      // -------------------------------------------------------------------------
-    // Barrel Shifting function called N-M times based, must be in parallel
+    // Barrel Shifting function called N-M*ParLvl times based, must be in parallel
     // thus defined as function automatic as it should be called dynamically
-    // Function uses concat then slice approach, TODO: Consider Looking into Dedicated
-    // Explicit Multi-stage mux module for implementation
     // -------------------------------------------------------------------------
     function automatic logic [MaxZ-1:0] RightCyclicShifter(
         input logic [MaxZ-1:0]          data,
