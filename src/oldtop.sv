@@ -195,15 +195,7 @@ module QCLDPCEncoder #(
 
     endgenerate
 
-
-
-
-
-    // -------------------------------------------------------------------------
-    // This is a small outward nested always_ff block that is used for counting
-    // Cycles, then finally doing the parity additions and 
-    // -------------------------------------------------------------------------
-    always_ff @(posedge CLK or negedge rst_n) begin
+        
         if(!rst_n) begin
             c_cnt           <= '0;
             shift_addr      <= '0;
