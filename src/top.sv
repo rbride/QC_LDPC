@@ -25,7 +25,7 @@
 //      Default is 1. 
 //  
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-module QCLDPCController #(
+module QCLDPCEncoder #(
     parameter int NUM_OF_SUPPORTED_Z                =               3,
     parameter int HIGHEST_SUPPORTED_Z_VAL           =               81,
     parameter int NUM_INFO_BLKS_PER_CODE_BLK        =               20,
@@ -51,8 +51,8 @@ module QCLDPCController #(
     input  logic rst_n;
     input  logic en_enc;
 
-    //assert   assert property (@(posedge clk) $onehot(req_Z)) 
-    input  logic [ZsN-1:0]                          req_z;   //Unused in ROM_Type 0
+    //TODO assert   assert property (@(posedge clk) $onehot(req_Z)) 
+    input  logic [ZsN-1:0]                          req_z;   //Unused in ROM_Type 0 Highest Value corresponds to 
     input  logic [(MaxZ*PLvl)-1:0]                  data_in;  
     output logic [(MaxZ*(NumPBlks+IBlksNum))-1:0]   p_data_out;
     // -------------------------------------------------------------------------    
@@ -73,6 +73,8 @@ module QCLDPCController #(
     logic [MaxZ-1:0] rotated_data [0:$clog2(NumPBlks*)-1];
 
     logic [$clog2(IBlksNum/PLvl)-1:0] c_cnt;
+
+
 
 
     // -------------------------------------------------------------------------    
@@ -138,7 +140,10 @@ module QCLDPCController #(
     endgenerate
 
 
-     // -------------------------------------------------------------------------
+
+    
+
+    // -------------------------------------------------------------------------
     // Barrel Shifting function called N-M*ParLvl times based, must be in parallel
     // thus defined as function automatic as it should be called dynamically
     // -------------------------------------------------------------------------
@@ -157,13 +162,49 @@ module QCLDPCController #(
     endfunction : RightCyclicShifter
 
 
+
+    // -------------------------------------------------------------------------    
+    // Stage 0: Input register / Zero padding if input is not width of Max Z
+    //      TODO: Must add support for P_Level
+    // -------------------------------------------------------------------------    
+    always_ff @posedge CLK) begin
+        if(!rst)
+            info_reg <= '0;
+        else begin
+            // NOTE: Note to the user, I decided not to go about using hours of my life working on 
+            // complex bunch of code to manage the input of this  one hot case if you change the number
+            // of possible combinations from the default 3 so you have to change it yourself manually because 
+            // I felt like not spending a bunch of time on this
+            unique case (req_z)
+                //The lowest bit corresponds to a selection of the first item in the array
+                3'b001 : 
+                    cur_info_reg <= {{ (MaxZ-Z_VALUE_ARRAY[0]){1'b0} }, info_in[(Z_VALUE_ARRAY[0]-1):0] };
+
+                3'b010 : 
+                    cur_info_reg <= {{ (MaxZ-Z_VALUE_ARRAY[1]){1'b0} }, info_in[(Z_VALUE_ARRAY[1]-1):0] };
+                    
+                3'b100 : 
+                    cur_info_reg <= info_in;
+
+                default : 
+                    cur_info_reg <= '0;
+            endcase
+        end
+    end
+
+    // -------------------------------------------------------------------------    
+    // Stage 0: Input register / Zero padding if input is not width of Max Z
+    //      TODO: Must add support for P_Level
+    // -------------------------------------------------------------------------    
+
+
     // ??? TODO TODO  TODO TODO TODO TODO TODO TODO 
     //THE REQUESTED ADDRESS FOR THE MEMORY NEEDS TO BE #of Z * depth / num_z -1
     // i.e. 81 is 2 in the array, so starting address is 288/3 = 96, *2 = 192 - 1 = 191
     // * 
 
 
-    always_ff @(posedge CLK or negedge rst_n) begin
+    always_ff @(posedge CLK) begin
         if(!rst_n) begin
             c_cnt   <= '0;
         end
