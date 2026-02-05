@@ -162,7 +162,6 @@ module QCLDPCEncoder #(
     endfunction : RightCyclicShifter
 
 
-
     // -------------------------------------------------------------------------    
     // Stage 0: Input register / Zero padding if input is not width of Max Z
     //      TODO: Must add support for P_Level
@@ -191,12 +190,6 @@ module QCLDPCEncoder #(
             endcase
         end
     end
-
-    // -------------------------------------------------------------------------    
-    // Stage 0: Input register / Zero padding if input is not width of Max Z
-    //      TODO: Must add support for P_Level
-    // -------------------------------------------------------------------------    
-
 
     // ??? TODO TODO  TODO TODO TODO TODO TODO TODO 
     //THE REQUESTED ADDRESS FOR THE MEMORY NEEDS TO BE #of Z * depth / num_z -1
