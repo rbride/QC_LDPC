@@ -219,3 +219,145 @@ module QCLDPCEncoder #(
 endmodule
 
 
+
+module row_parallel_streaming_pipeline #(
+    parameter int ZMAX = 81,
+    parameter int NUM_ROW_GROUPS = 4,
+    parameter int NUM_COLS = 8,
+    parameter int PIPE_DEPTH = 7           // internal barrel shifter pipeline depth
+)(
+    input  logic clk,
+    input  logic rst,
+    input  logic valid_in,                  // input data valid
+    input  logic [ZMAX-1:0] info_in,
+    input  logic [$clog2(ZMAX)-1:0] shift_matrix
+        [0:NUM_ROW_GROUPS-1][0:NUM_COLS-1],
+    output logic [ZMAX-1:0] row_parity [0:NUM_ROW_GROUPS-1],
+    output logic row_valid [0:NUM_ROW_GROUPS-1]
+);
+
+    // -----------------------------
+    // Column pointer for streaming
+    // -----------------------------
+    logic [$clog2(NUM_COLS)-1:0] col_idx;
+    always_ff @(posedge clk) begin
+        if (rst)
+            col_idx <= 0;
+        else if (valid_in)
+            col_idx <= (col_idx == NUM_COLS-1) ? 0 : col_idx + 1;
+    end
+
+    // -----------------------------
+    // Row-parallel streaming pipeline
+    // -----------------------------
+    genvar r;
+    generate
+        for (r = 0; r < NUM_ROW_GROUPS; r=r+1) begin : ROW_ROTATORS
+
+            // accumulator per row
+            logic [ZMAX-1:0] accum;
+            assign row_parity[r] = accum;
+
+            // valid pipeline shift register
+            logic [PIPE_DEPTH*NUM_COLS-1:0] valid_pipe;
+
+            // current rotator output
+            logic [ZMAX-1:0] rotator_out;
+
+            // barrel shifter instance for current row/column
+            barrel_shifter_pipelined #(ZMAX) rotator_inst (
+                .clk(clk),
+                .rst(rst),
+                .in_data(info_in),
+                .shift_amt(shift_matrix[r][col_idx]),
+                .out_data(rotator_out)
+            );
+
+            // XOR accumulation and valid shift
+            always_ff @(posedge clk) begin
+                if (rst) begin
+                    accum       <= '0;
+                    valid_pipe  <= '0;
+                end else if (valid_in) begin
+                    accum <= accum ^ rotator_out;           // continuous accumulation
+                    valid_pipe <= {valid_pipe[PIPE_DEPTH*NUM_COLS-2:0], 1'b1}; // shift in valid
+                end else begin
+                    valid_pipe <= {valid_pipe[PIPE_DEPTH*NUM_COLS-2:0], 1'b0};
+                end
+            end
+
+            // output row valid
+            assign row_valid[r] = valid_pipe[PIPE_DEPTH*NUM_COLS-1];
+
+        end
+    endgenerate
+
+endmodule
+
+logic [WIDTH-1:0] stage_reg [0:NUM_STAGES];
+always_ff @(posedge clk) begin
+    stage_reg[i+1] <= circular_shift_right(stage_reg[i], shift_amt[i]);
+end
+
+always_ff @(posedge clk or posedge rst) begin
+    if (rst)
+        stage[i+1] <= '0;
+    else
+        stage[i+1] <= circular_shift_right(stage[i], shift_amt[i]);
+end
+
+function automatic logic [WIDTH-1:0] circular_shift_right;
+    input logic [WIDTH-1:0] data_in;
+    input int unsigned shift_amt;
+    parameter int WIDTH = 81;
+    
+    circular_shift_right = (data_in >> shift_amt) | (data_in << (WIDTH - shift_amt));
+endfunction
+
+// Parameters
+parameter WIDTH = 81;
+parameter NUM_STAGES = $clog2(WIDTH);
+
+// Pipeline registers
+logic [WIDTH-1:0] stage [0:NUM_STAGES];
+
+// Assume stage[0] is input
+assign stage[0] = in_data;
+
+// Pipeline each stage using the function
+genvar i;
+generate
+    for (i = 0; i < NUM_STAGES; i=i+1) begin : SHIFTER_STAGE
+        always_ff @(posedge clk or posedge rst) begin
+            if (rst)
+                stage[i+1] <= '0;
+            else
+                stage[i+1] <= circular_shift_right(stage[i], shift_amt[i]);
+        end
+    end
+endgenerate
+
+// Final output
+assign out_data = stage[NUM_STAGES];
+
+// =======================================================
+    // Stage 0: Input register + zero padding to ZMAX
+    // =======================================================
+    logic [ZMAX-1:0] info_reg;
+    always_ff @(posedge clk) begin
+        if (!rst)
+            info_reg <= '0;
+        else
+            info_reg <= {{(ZMAX-Z){1'b0}}, info_in};
+    end
+
+
+    always_ff @(posedge clk) begin
+    unique case (one_hot_in)
+        4'b0001: out <= 8'd10;
+        4'b0010: out <= 8'd20;
+        4'b0100: out <= 8'd30;
+        4'b1000: out <= 8'd40;
+        default: out <= 8'd0;
+    endcase
+end
