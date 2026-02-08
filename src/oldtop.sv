@@ -336,28 +336,3 @@ generate
         end
     end
 endgenerate
-
-// Final output
-assign out_data = stage[NUM_STAGES];
-
-// =======================================================
-    // Stage 0: Input register + zero padding to ZMAX
-    // =======================================================
-    logic [ZMAX-1:0] info_reg;
-    always_ff @(posedge clk) begin
-        if (!rst)
-            info_reg <= '0;
-        else
-            info_reg <= {{(ZMAX-Z){1'b0}}, info_in};
-    end
-
-
-    always_ff @(posedge clk) begin
-    unique case (one_hot_in)
-        4'b0001: out <= 8'd10;
-        4'b0010: out <= 8'd20;
-        4'b0100: out <= 8'd30;
-        4'b1000: out <= 8'd40;
-        default: out <= 8'd0;
-    endcase
-end

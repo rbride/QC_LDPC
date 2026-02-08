@@ -139,10 +139,6 @@ module QCLDPCEncoder #(
         endcase 
     endgenerate
 
-
-
-    
-
     // -------------------------------------------------------------------------
     // Barrel Shifting function called N-M*ParLvl times based, must be in parallel
     // thus defined as function automatic as it should be called dynamically
