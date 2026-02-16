@@ -82,14 +82,14 @@ module tb_pipelinedCircularShifter;
         rst_n = 0;
         in_data = '0;
         shift_val = '0;
-        tick(2);
+        tick(5);
         rst_n = 1;
         tick(1);
 
         $display("STARTING pipelinedCircularShifter TEST (MAXZ=%0d)", MAXZ);
 
         // set latency and counters
-        latency = 16;
+        latency = 50;
         total_tests = 0;
         total_fail = 0;
 

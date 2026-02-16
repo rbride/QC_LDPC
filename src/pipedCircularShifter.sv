@@ -81,14 +81,14 @@ module pipelinedCircularShifter1 #(
     //Net array to hold intermediates, basically the wire equivelent of Temps
     //That exist so each next has only a single driver
 
-    logic [MAXZ-1:0] tmpwires [0:NumMuxlevels];
+    logic [MAXZ-1:0] tmpwires [0:NumMuxlevels] /*verilator split_var*/ ; 
     assign tmpwires[0] = stage_regs[0];
 
     genvar i, qq;
     generate
         for(i=0; i<NumStages; i++) begin : PipelineStage
             logic [MAXZ-1:0] rotated;
-    
+
             // //Shift the amount of times needed for this stage. 
             for(qq=0; qq<StagesPerPipelineLevel; qq++) begin : NumMuxlevels
                 localparam int idx = i*StagesPerPipelineLevel+qq;
@@ -102,7 +102,7 @@ module pipelinedCircularShifter1 #(
                 end
             end
             
-            assign rotated =tmpwires[StagesPerPipelineLevel*i];
+            assign rotated =tmpwires[StagesPerPipelineLevel*(i+1)];
             
             always_ff @(posedge CLK) begin
                 if(!rst_n)
