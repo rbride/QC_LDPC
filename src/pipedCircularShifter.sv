@@ -70,39 +70,21 @@ module pipelinedCircularShifter1 #(
 
     localparam int NumMuxlevels             = $clog2(MAXZ);
     localparam int StagesPerPipelineLevel   = PIPE_STAGES_PER_CYCLE;
-    localparam int NumStages                = (NumMuxlevels % StagesPerPipelineLevel != 0) ?
-                                              (NumMuxlevels / StagesPerPipelineLevel) :
-                                              (NumMuxlevels / StagesPerPipelineLevel +1 );
+    localparam int NumStages                = (NumMuxlevels % StagesPerPipelineLevel  != 0) ?
+                                              ((NumMuxlevels / StagesPerPipelineLevel) +1 )  :
+                                              (NumMuxlevels / StagesPerPipelineLevel);
 
     logic [MAXZ-1:0] stage_regs [0:NumStages];  
     //stage[0] is the currently most recently streamed in data so load it in
     assign stage_regs[0] = in_data;
-
-    //Net array to hold intermediates, basically the wire equivelent of Temps
-    //That exist so each next has only a single driver
-
-    logic [MAXZ-1:0] tmpwires [0:NumMuxlevels] /*verilator split_var*/ ; 
-    assign tmpwires[0] = stage_regs[0];
-
+        
     genvar i, qq;
     generate
         for(i=0; i<NumStages; i++) begin : PipelineStage
-            logic [MAXZ-1:0] rotated;
-
-            // //Shift the amount of times needed for this stage. 
-            for(qq=0; qq<StagesPerPipelineLevel; qq++) begin : NumMuxlevels
-                localparam int idx = i*StagesPerPipelineLevel+qq;
-                if( idx < NumStages) begin
-                    assign tmpwires[qq+1] = shift_val[idx] ?
-                        {tmpwires[qq][(1<<idx)-1:0], tmpwires[qq][MAXZ-1:(1<<idx)]}  :
-                        tmpwires[qq];
-                
-                end else begin
-                    assign tmpwires[qq+1] = tmpwires[qq];                    
-                end
-            end
             
-            assign rotated =tmpwires[StagesPerPipelineLevel*(i+1)];
+
+            
+            assign rotated = tmpwires[StagesPerPipelineLevel*(i+1)];
             
             always_ff @(posedge CLK) begin
                 if(!rst_n)
@@ -111,9 +93,41 @@ module pipelinedCircularShifter1 #(
                     stage_regs[i+1] <= rotated;
             end
 
+
         end
     endgenerate
 
     assign out_data = stage_regs[NumStages];
 
 endmodule
+
+//To work around verilog/system verilog limitations that are causing issues with generate functions
+//simulation, and Synthesis, that is tool dependent, the individual rotation stage is moved out into its own module
+module rotateStage #(
+    parameter int MAXZ      = 81,
+    parameter int SHIFT     = 1
+)(
+    input logic [MAXZ-1:0]  i_data, 
+    input logic en_en,      //Couldn't decide on en_ or _en now its a face!!! :)        
+    output logic [MAXZ-1:0] o_data
+);
+    
+    assign o_data = ( en_en ) ? 
+            ( { i_data[ (1<<SHIFT)-1:0 ], i_data[ MAXZ-1:(1<<SHIFT) ] } ) :
+            ( i_data ) ; 
+
+endmodule
+
+
+// // //Shift the amount of times needed for this stage. 
+//             for(qq=0; qq<StagesPerPipelineLevel; qq++) begin : NumMuxlevels
+//                 localparam int idx = i*StagesPerPipelineLevel+qq;
+//                 if( idx < NumStages) begin
+//                     assign tmpwires[qq+1] = shift_val[idx] ?
+//                         {tmpwires[qq][(1<<idx)-1:0], tmpwires[qq][MAXZ-1:(1<<idx)]}  :
+//                         tmpwires[qq];
+                
+//                 end else begin
+//                     assign tmpwires[qq+1] = tmpwires[qq];                    
+//                 end
+//             end
