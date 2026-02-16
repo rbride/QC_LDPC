@@ -1,5 +1,4 @@
 `timescale 1ns / 1ps
-`default_nettype none
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Author: Ryan Bride 
 // Create Date: 09/09/2025
@@ -75,8 +74,6 @@ module QCLDPCEncoder #(
     logic [$clog2(IBlksNum/PLvl)-1:0] c_cnt;
 
 
-
-
     // -------------------------------------------------------------------------    
     // Generate ROM
     // TODO: Add more asserts to throw errors when the values given
@@ -139,25 +136,6 @@ module QCLDPCEncoder #(
         endcase 
     endgenerate
 
-    // -------------------------------------------------------------------------
-    // Barrel Shifting function called N-M*ParLvl times based, must be in parallel
-    // thus defined as function automatic as it should be called dynamically
-    // -------------------------------------------------------------------------
-    function automatic logic [MaxZ-1:0] RightCyclicShifter(
-        input logic [MaxZ-1:0]          data,
-        input logic [PmRomWidth-1:0]    rotval
-    );
-
-    logic [2*MAX_Z -1: 0] data_repeated;
-    begin
-        data_repeated = {data, data};
-        //Add a diagram of this working or example of this working from notes or whatever maybe
-        return( data_repeated[ (Z-1) + rotval -: Z]);
-    end 
-
-    endfunction : RightCyclicShifter
-
-
     // -------------------------------------------------------------------------    
     // Stage 0: Input register / Zero padding if input is not width of Max Z
     //      TODO: Must add support for P_Level
@@ -173,13 +151,13 @@ module QCLDPCEncoder #(
             unique case (req_z)
                 //The lowest bit corresponds to a selection of the first item in the array
                 3'b001 : 
-                    cur_info_reg <= {{ (MaxZ-Z_VALUE_ARRAY[0]){1'b0} }, info_in[(Z_VALUE_ARRAY[0]-1):0] };
+                    cur_info_reg <= {{ (MaxZ-Z_VALUE_ARRAY[0]){1'b0} }, data_in[(Z_VALUE_ARRAY[0]-1):0] };
 
                 3'b010 : 
-                    cur_info_reg <= {{ (MaxZ-Z_VALUE_ARRAY[1]){1'b0} }, info_in[(Z_VALUE_ARRAY[1]-1):0] };
+                    cur_info_reg <= {{ (MaxZ-Z_VALUE_ARRAY[1]){1'b0} }, data_in[(Z_VALUE_ARRAY[1]-1):0] };
                     
                 3'b100 : 
-                    cur_info_reg <= info_in;
+                    cur_info_reg <= data_in;
 
                 default : 
                     cur_info_reg <= '0;
@@ -187,7 +165,12 @@ module QCLDPCEncoder #(
         end
     end
 
-    // ??? TODO TODO  TODO TODO TODO TODO TODO TODO 
+    // -------------------------------------------------------------------------    
+    // Stage 1 - : Input register / Zero padding if input is not width of Max Z
+    // -------------------------------------------------------------------------    
+
+
+
     //THE REQUESTED ADDRESS FOR THE MEMORY NEEDS TO BE #of Z * depth / num_z -1
     // i.e. 81 is 2 in the array, so starting address is 288/3 = 96, *2 = 192 - 1 = 191
     // * 

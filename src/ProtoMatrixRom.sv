@@ -1,5 +1,4 @@
 `timescale 1ns / 1ps
-`default_nettype none
 // -------------------------------------------------------------------------
 //
 //  All defined Roms Support the included standard 5/6 rate with the 3 standard Z values of 27,54,81
