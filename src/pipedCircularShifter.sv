@@ -53,8 +53,8 @@ module pipelinedCircularShifter #(
 
             for(qq=0; qq<ShiftsPerPipelineLevel; qq++) begin : RotStagePerPipe
                 localparam int idx = i*ShiftsPerPipelineLevel+qq;
-                localparam logic realityCheck = (idx <= NumMuxlevels) ? ( 1'b1 ) : ( 1'b0 );   
-                localparam int s_idx = (idx >= $clog2(MAXZ)) ? $clog2(MAXZ)-1 : idx;
+                localparam logic realityCheck = (idx < NumMuxlevels) ? ( 1'b1 ) : ( 1'b0 );   
+                localparam int s_idx = idx % $clog2(MAXZ);
 
                 rotateStage #(
                     .MAXZ( MAXZ ),
@@ -107,11 +107,12 @@ module rotateStage #(
     output logic [MAXZ-1:0] o_data
 );
     localparam int clamped_shift =  
-                (( 1<<SHIFT ) > (1<<$clog2(MAXZ)) ) ? $clog2(MAXZ) : SHIFT;
+                (( 1<<SHIFT ) >= (1<<($clog2(MAXZ)-1)) ) ? $clog2(MAXZ)-1 : SHIFT;
     localparam int sh_val_mod = (1 << SHIFT) % MAXZ;
-    localparam logic o_o = (!DOES_EXIST || sh_val_mod == 0 );
+    //localparam int sh_val_mod = (1 << (SHIFT % $clog2(MAXZ))) % MAXZ;
+    //localparam logic o_o = (!DOES_EXIST || sh_val_mod == 0 );
+    localparam logic o_o = (!DOES_EXIST );
     
-
     generate
         case(o_o) 
             1'b1 : 
@@ -120,6 +121,8 @@ module rotateStage #(
                 always_comb begin
                     if(en_en)
                         o_data = {  i_data[sh_val_mod-1:0], i_data[MAXZ-1:sh_val_mod] };
+                        //o_data = { i_data[(1<<clamped_shift)-1:0], i_data[MAXZ-1:(1<<clamped_shift)] };
+
                     else 
                         o_data = i_data;
                 end
@@ -164,7 +167,6 @@ module pipelinedCircularShifterFMAX #(
                 else
                     rotated = stage[i];
             end
-
             //pipeline Registers 
             always_ff @(posedge CLK) begin
                 if(!rst_n)
@@ -186,7 +188,6 @@ module pipelinedCircularShifterFMAX #(
     end
 
     assign out_data = stage[NumStages];
-
     assign valid_out = valid_pipe[NumStages];
-
+    
 endmodule
