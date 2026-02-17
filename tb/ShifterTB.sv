@@ -4,7 +4,7 @@ module tb_pipelinedCircularShifter;
     // Test parameters
     localparam int MAXZ = 81;
     localparam int CLK_PERIOD = 10;
-    localparam int PIPE1_STAGES_PER_CYCLE = 1;
+    localparam int PIPE1_ROTATES_PER_CYCLE = 1;
 
     // DUT IO
     logic clk;
@@ -38,7 +38,7 @@ module tb_pipelinedCircularShifter;
 
     pipelinedCircularShifter #(
         .MAXZ(MAXZ),
-        .PIPE_STAGES_PER_CYCLE(PIPE1_STAGES_PER_CYCLE)
+        .ROTATES_PER_CYCLE(PIPE1_ROTATES_PER_CYCLE)
     ) dut1 (
         .CLK(clk),
         .rst_n(rst_n),

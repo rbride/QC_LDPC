@@ -3,20 +3,25 @@
 // Fully Pipelined Barrel Shifter
 // Author: Ryan Bride
 // Description: 
-//      Generic Pipelined Circular Shifter Module, Shifts right
-//      and contains Clog2(MAXZ) stages (1 stage per max shift val bit),
-//      The Module can be changed to do X shifts per cycle
+//      Generic Pipelined Circular Shifter Module, Circularly Shifts Right.
+//      by default preforms Clog2(MAXZ) stages (1 stage per max shift val bit)
+//      to achieve FMax after synthesis, however module can be changed
+//      to combine N of those shifts per cycle. This is because various 
+//      Platforms and use cases my have a variety of requirments and tradeoffs
+//      i.e. you could choice to do more stages per cycle lowering Fmax because 
+//      you have plentiful Bram to exploit and want to do a bunch in parallel
+//      at the cost of decreased clock speed etc
 // MAXZ: 
-//      The Maximum Value should always be used for the Z, as the logic
+//      The Maximum Value should always be used for the Z, as the top module
 //      incorperating this module has a step that Zero pads the input data
-//
-// PIPE_STAGES_PER_CYCLE:
-//      As the name suggest, the number of pipeline stages per cycle
-//      That the module is aiming to achieve
+//      to support the use of multiple Z values. 
+// ROTATES_PER_CYCLE:
+//      The number of Rotates levels / Shifts per cycle
+//      Default is once again 1, for FMax
 // ==========================================================================\
 module pipelinedCircularShifter #(     
     parameter int MAXZ                    = 81,
-    parameter int PIPE_STAGES_PER_CYCLE   = 1 //Should throw an error on 0
+    parameter int ROTATES_PER_CYCLE   = 1 //Should throw an error on 0
 )(
     input logic CLK,
     input logic rst_n,
@@ -24,12 +29,11 @@ module pipelinedCircularShifter #(
     input logic [$clog2(MAXZ)-1:0] shift_val,
     output logic [MAXZ-1:0] out_data
 );  
-
     localparam int NumMuxlevels             = $clog2(MAXZ);
-    localparam int StagesPerPipelineLevel   = PIPE_STAGES_PER_CYCLE;
-    localparam int NumStages                = (NumMuxlevels % StagesPerPipelineLevel  != 0) ?
-                                              ((NumMuxlevels / StagesPerPipelineLevel) +1 )  :
-                                              (NumMuxlevels / StagesPerPipelineLevel);
+    localparam int ShiftsPerPipelineLevel   = ROTATES_PER_CYCLE;
+    localparam int NumStages                = (NumMuxlevels % ShiftsPerPipelineLevel  != 0) ?
+                                              ((NumMuxlevels / ShiftsPerPipelineLevel) +1 )  :
+                                              (NumMuxlevels / ShiftsPerPipelineLevel);
 
     logic [MAXZ-1:0] stage_regs [0:NumStages];  
     //stage[0] is the currently most recently streamed in data so load it in
@@ -38,18 +42,16 @@ module pipelinedCircularShifter #(
     genvar i, qq;
     generate
         for(i=0; i<NumStages; i++) begin : PipelineStage
-            
             //Wire array for each substep output
-            wire [MAXZ-1:0] stage_wires [0:StagesPerPipelineLevel];
-
+            wire [MAXZ-1:0] stage_wires [0:ShiftsPerPipelineLevel];
+            
             //Input the current value stored in the regs into the wire net
             assign stage_wires[0] = stage_regs[i];
 
-            for(qq=0; qq<StagesPerPipelineLevel; qq++) begin : RotStagePerPipe
-                localparam int idx = i*StagesPerPipelineLevel+qq;
+            for(qq=0; qq<ShiftsPerPipelineLevel; qq++) begin : RotStagePerPipe
+                localparam int idx = i*ShiftsPerPipelineLevel+qq;
                 localparam logic realityCheck = (idx <= NumMuxlevels) ? ( 1'b1 ) : ( 1'b0 ); 
                 
-
                 rotateStage #(
                     .MAXZ( MAXZ ),
                     .SHIFT( idx ),   
@@ -63,10 +65,10 @@ module pipelinedCircularShifter #(
                     
             //After all the stage logic, place the outputs of each stage into the register 
             always_ff @(posedge CLK) begin
-                    if(!rst_n)
-                        stage_regs[i+1] <= '0;
-                    else
-                        stage_regs[i+1] <= stage_wires[StagesPerPipelineLevel];;
+                if(!rst_n)
+                    stage_regs[i+1] <= '0;
+                else
+                    stage_regs[i+1] <= stage_wires[ShiftsPerPipelineLevel];;
             end
         end
     endgenerate
@@ -74,21 +76,22 @@ module pipelinedCircularShifter #(
     assign out_data = stage_regs[NumStages];
 
 endmodule
-
-//To work around verilog/system verilog limitations that are causing issues with generate functions
-//simulation, and Synthesis, that is tool dependent, the individual rotation stage is moved out into its own module
+// -------------------------------------------------------------------------    
+// Module to encapsulate the Rotation and generate a circuit only if the 
+// Rotation is needed to remove uncessary rotation stages generation that exist 
+// When MaxZ % ROTATES_PER_CYCLE =/= 
+// -------------------------------------------------------------------------   
 module rotateStage #(
-    parameter int MAXZ          = 81,
-    parameter int SHIFT         = 1,
-    parameter logic DOES_EXIST    = 1         //Chat am I cooking? 
-)(
+    parameter int   MAXZ        = 81,
+    parameter int   SHIFT       = 1,
+    parameter logic DOES_EXIST  = 1     //1 if it exist 0 if it does not    
+)(      
     input logic [MAXZ-1:0]  i_data, 
     input logic en_en,      //Couldn't decide on en_ or _en now its a face!!! :)        
     output logic [MAXZ-1:0] o_data
 );
-     
     localparam int clamped_shift =  
-        (( 1<<SHIFT ) > (1<<$clog2(MAXZ)) ) ? $clog2(MAXZ) : SHIFT;
+                (( 1<<SHIFT ) > (1<<$clog2(MAXZ)) ) ? $clog2(MAXZ) : SHIFT;
     localparam int sh_val_mod = (1 << SHIFT) % MAXZ;
     localparam logic o_o = (!DOES_EXIST || sh_val_mod == 0 );
 
@@ -104,15 +107,15 @@ module rotateStage #(
                         o_data = i_data;
                 end
             end
-    endcase  
-
+        endcase  
     endgenerate
-
 endmodule
 
-// -------------------------------------------------------------------------    
-//
-// -------------------------------------------------------------------------   
+// ==========================================================================    
+// Original Simplistic Pipeline Rotator
+// No support for changing from doing one stage per Clog2(MAXZ)
+// You can utilize this instead of the above if you want, it is tested & works
+// ==========================================================================\   
 module pipelinedCircularShifterFMAX #(
     parameter int MAXZ  = 81
 )(
