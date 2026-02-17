@@ -2,7 +2,7 @@
 module tb_pipelinedCircularShifter;
 
     // Test parameters
-    localparam int MAXZ = 8;
+    localparam int MAXZ = 16;
     localparam int CLK_PERIOD = 10;
     localparam int PIPE1_STAGES_PER_CYCLE = 2;
 
@@ -71,12 +71,12 @@ module tb_pipelinedCircularShifter;
 
     initial begin
         // populate patterns (module-scope vars)
-        patterns[0] = 8'b10110101;
-        patterns[1] = 8'b00001111;
-        patterns[2] = 8'b11110000;
-        patterns[3] = 8'b01010101;
-        patterns[4] = 8'b00110011;
-        patterns[5] = 8'hA5;
+        patterns[0] = 16'b10110101_10110101;
+        patterns[1] = 16'b00001111_00001111;
+        patterns[2] = 16'b11110000_11110000;
+        patterns[3] = 16'b01010101_01010101;
+        patterns[4] = 16'b00110011_00110011;
+        patterns[5] = 16'hA5_A5;
 
         // reset
         rst_n = 0;
@@ -89,7 +89,7 @@ module tb_pipelinedCircularShifter;
         $display("STARTING pipelinedCircularShifter TEST (MAXZ=%0d)", MAXZ);
 
         // set latency and counters
-        latency = 50;
+        latency = 10;
         total_tests = 0;
         total_fail = 0;
 
@@ -124,6 +124,12 @@ module tb_pipelinedCircularShifter;
             $display("TESTS FAILED: %0d failures out of %0d vectors", total_fail, total_tests);
 
         $finish;
+    end
+
+    // --- VCD dump ---
+    initial begin
+        $dumpfile("sim.vcd");   // name of the VCD file
+        $dumpvars(0, tb);       // dump all signals in tb hierarchy
     end
 
 endmodule

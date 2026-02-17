@@ -59,7 +59,7 @@ endmodule
 
 module pipelinedCircularShifter1 #(     
     parameter int MAXZ                    = 81,
-    parameter int PIPE_STAGES_PER_CYCLE   = 1
+    parameter int PIPE_STAGES_PER_CYCLE   = 1 //Should throw an error on 0
 )(
     input logic CLK,
     input logic rst_n,
@@ -82,18 +82,34 @@ module pipelinedCircularShifter1 #(
     generate
         for(i=0; i<NumStages; i++) begin : PipelineStage
             
+            //Wire array for each substep output
+            wire [MAXZ-1:0] stage_wires [0:StagesPerPipelineLevel];
 
-            
-            assign rotated = tmpwires[StagesPerPipelineLevel*(i+1)];
-            
+            //Input the current value stored in the regs into the wire net
+            assign stage_wires[0] = stage_regs[i];
+
+            for(qq=0; qq<StagesPerPipelineLevel; qq++) begin : RotStagePerPipe
+                localparam int idx = i*StagesPerPipelineLevel+qq;
+                localparam logic realityCheck = (idx <= NumMuxlevels) ? ( 1'b1 ) : ( 1'b0 ); 
+        
+                rotateStage #(
+                    .MAXZ( MAXZ ),
+                    .SHIFT( idx ),
+                    .DOES_EXIST( realityCheck ) //Don't actually create it the mux stuff if you don't need to
+                ) rot_inst (
+                    .i_data(stage_wires[qq]),
+                    .o_data(stage_wires[qq+1]),
+                    .en_en(shift_val[idx])
+                );
+            end : RotStagePerPipe        
+                    
+            //After all the stage logic, place the outputs of each stage into the register 
             always_ff @(posedge CLK) begin
-                if(!rst_n)
-                    stage_regs[i+1] <= '0;
-                else
-                    stage_regs[i+1] <= rotated;
+                    if(!rst_n)
+                        stage_regs[i+1] <= '0;
+                    else
+                        stage_regs[i+1] <= stage_wires[StagesPerPipelineLevel];;
             end
-
-
         end
     endgenerate
 
@@ -104,21 +120,27 @@ endmodule
 //To work around verilog/system verilog limitations that are causing issues with generate functions
 //simulation, and Synthesis, that is tool dependent, the individual rotation stage is moved out into its own module
 module rotateStage #(
-    parameter int MAXZ      = 81,
-    parameter int SHIFT     = 1
+    parameter int MAXZ          = 81,
+    parameter int SHIFT         = 1,
+    parameter logic DOES_EXIST    = 1         //Chat am I cooking? 
 )(
     input logic [MAXZ-1:0]  i_data, 
     input logic en_en,      //Couldn't decide on en_ or _en now its a face!!! :)        
     output logic [MAXZ-1:0] o_data
 );
-    
-    assign o_data = ( en_en ) ? 
-            ( { i_data[ (1<<SHIFT)-1:0 ], i_data[ MAXZ-1:(1<<SHIFT) ] } ) :
-            ( i_data ) ; 
+    genvar o_o;
+    generate
+        if(DOES_EXIST) begin
+            assign o_data = ( en_en ) ? 
+                ( { i_data[ (1<<SHIFT)-1:0 ], i_data[ MAXZ-1:(1<<SHIFT) ] } ) :
+                //stage[i][(1<<i)-1:0], stage[i][MAXZ-1:(1<<i)]
+                ( i_data ) ; 
+        end else begin
+            assign o_data = i_data;
+        end
+    endgenerate
 
 endmodule
-
-
 // // //Shift the amount of times needed for this stage. 
 //             for(qq=0; qq<StagesPerPipelineLevel; qq++) begin : NumMuxlevels
 //                 localparam int idx = i*StagesPerPipelineLevel+qq;
