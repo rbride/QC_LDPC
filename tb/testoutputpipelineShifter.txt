@@ -1,0 +1,20 @@
+STARTING pipelinedCircularShifter TEST (MAXZ=16)
+ALL TESTS PASSED: 96 vectors
+- tb/ShifterTB.sv:126: Verilog $finish
+- S i m u l a t i o n   R e p o r t: Verilator 5.032 2025-01-01
+- Verilator: $finish at 10us; walltime 0.001 s; speed 7.149 ms/s
+- Verilator: cpu 0.001 s on 1 threads; alloced 249 MB
+
+
+STARTING pipelinedCircularShifter TEST (MAXZ=16)
+ALL TESTS PASSED: 96 vectors
+- tb/ShifterTB.sv:126: Verilog $finish
+- S i m u l a t i o n   R e p o r t: Verilator 5.032 2025-01-01
+- Verilator: $finish at 10us; walltime 0.001 s; speed 4.498 ms/s
+- Verilator: cpu 0.002 s on 1 threads; alloced 249 MB
+STARTING pipelinedCircularShifter TEST (MAXZ=81)
+ALL TESTS PASSED: 486 vectors
+- tb/ShifterTB.sv:132: Verilog $finish
+- S i m u l a t i o n   R e p o r t: Verilator 5.032 2025-01-01
+- Verilator: $finish at 49us; walltime 0.004 s; speed 10.281 ms/s
+- Verilator: cpu 0.005 s on 1 threads; alloced 249 MB

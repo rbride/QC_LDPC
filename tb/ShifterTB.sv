@@ -2,9 +2,9 @@
 module tb_pipelinedCircularShifter;
 
     // Test parameters
-    localparam int MAXZ = 16;
+    localparam int MAXZ = 81;
     localparam int CLK_PERIOD = 10;
-    localparam int PIPE1_STAGES_PER_CYCLE = 2;
+    localparam int PIPE1_STAGES_PER_CYCLE = 1;
 
     // DUT IO
     logic clk;
@@ -28,7 +28,7 @@ module tb_pipelinedCircularShifter;
     logic [MAXZ-1:0] expected;
 
     // Instantiate DUTs
-    pipelinedCircularShifter2 #(.MAXZ(MAXZ)) dut2 (
+    pipelinedCircularShifterFMAX #(.MAXZ(MAXZ)) dut2 (
         .CLK(clk),
         .rst_n(rst_n),
         .in_data(in_data),
@@ -36,7 +36,7 @@ module tb_pipelinedCircularShifter;
         .out_data(out2)
     );
 
-    pipelinedCircularShifter1 #(
+    pipelinedCircularShifter #(
         .MAXZ(MAXZ),
         .PIPE_STAGES_PER_CYCLE(PIPE1_STAGES_PER_CYCLE)
     ) dut1 (
@@ -71,13 +71,19 @@ module tb_pipelinedCircularShifter;
 
     initial begin
         // populate patterns (module-scope vars)
-        patterns[0] = 16'b10110101_10110101;
-        patterns[1] = 16'b00001111_00001111;
-        patterns[2] = 16'b11110000_11110000;
-        patterns[3] = 16'b01010101_01010101;
-        patterns[4] = 16'b00110011_00110011;
-        patterns[5] = 16'hA5_A5;
-
+        // patterns[0] = 16'b10110101_10110101;
+        // patterns[1] = 16'b00001111_00001111;
+        // patterns[2] = 16'b11110000_11110000;
+        // patterns[3] = 16'b01010101_01010101;
+        // patterns[4] = 16'b00110011_00110011;
+        // patterns[5] = 16'hA5_A5;
+        patterns[0] = 81'b001101111100100000001101101011101110101101100100010001000111110101001101000111110;
+        patterns[1] = 81'b101111100100101000110000101111011101101111010010001101011010101010010110011101110;
+        patterns[2] = 81'b001010011100100001001001011111010101000011000011100010110101001110100011010011001;
+        patterns[3] = 81'b111010001011111001001100010011100100001000111111000100000010010011011001110010011;
+        patterns[4] = 81'b101001110001101001111010010000110111101001011101100101001000011001110010101000111;
+        patterns[5] = 81'b010010011010110000001111010100110101100011011001111100001100001110101111000100101;
+        
         // reset
         rst_n = 0;
         in_data = '0;
