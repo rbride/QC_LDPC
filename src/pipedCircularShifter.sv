@@ -21,13 +21,15 @@
 // ==========================================================================\
 module pipelinedCircularShifter #(     
     parameter int MAXZ                    = 81,
-    parameter int ROTATES_PER_CYCLE   = 1 //Should throw an error on 0
+    parameter int ROTATES_PER_CYCLE       = 1 //Should throw an error on 0
 )(
     input logic CLK,
     input logic rst_n,
+    input logic valid_in,
     input logic [MAXZ-1:0] in_data,
     input logic [$clog2(MAXZ)-1:0] shift_val,
-    output logic [MAXZ-1:0] out_data
+    output logic [MAXZ-1:0] out_data,
+    output logic valid_out
 );  
     localparam int NumMuxlevels             = $clog2(MAXZ);
     localparam int ShiftsPerPipelineLevel   = ROTATES_PER_CYCLE;
@@ -36,6 +38,7 @@ module pipelinedCircularShifter #(
                                               (NumMuxlevels / ShiftsPerPipelineLevel);
 
     logic [MAXZ-1:0] stage_regs [0:NumStages];  
+    logic [NumStages:0] valid_pipe;
     //stage[0] is the currently most recently streamed in data so load it in
     assign stage_regs[0] = in_data;
         
@@ -50,8 +53,9 @@ module pipelinedCircularShifter #(
 
             for(qq=0; qq<ShiftsPerPipelineLevel; qq++) begin : RotStagePerPipe
                 localparam int idx = i*ShiftsPerPipelineLevel+qq;
-                localparam logic realityCheck = (idx <= NumMuxlevels) ? ( 1'b1 ) : ( 1'b0 ); 
-                
+                localparam logic realityCheck = (idx <= NumMuxlevels) ? ( 1'b1 ) : ( 1'b0 );   
+                localparam int s_idx = (idx >= $clog2(MAXZ)) ? $clog2(MAXZ)-1 : idx;
+
                 rotateStage #(
                     .MAXZ( MAXZ ),
                     .SHIFT( idx ),   
@@ -59,7 +63,7 @@ module pipelinedCircularShifter #(
                 ) rot_inst (
                     .i_data(stage_wires[qq]),
                     .o_data(stage_wires[qq+1]),
-                    .en_en(shift_val[idx])
+                    .en_en(shift_val[s_idx])
                 );
             end : RotStagePerPipe        
                     
@@ -68,12 +72,24 @@ module pipelinedCircularShifter #(
                 if(!rst_n)
                     stage_regs[i+1] <= '0;
                 else
-                    stage_regs[i+1] <= stage_wires[ShiftsPerPipelineLevel];;
+                    stage_regs[i+1] <= stage_wires[ShiftsPerPipelineLevel];
             end
         end
     endgenerate
 
     assign out_data = stage_regs[NumStages];
+
+    always_ff @(posedge CLK) begin
+        if (!rst_n)
+            valid_pipe <= '0;
+        else begin
+            valid_pipe[0] <= valid_in;
+            for (int i = 1; i <= NumStages; i++)
+                valid_pipe[i] <= valid_pipe[i-1];
+        end
+    end
+
+    assign valid_out = valid_pipe[NumStages];
 
 endmodule
 // -------------------------------------------------------------------------    
@@ -94,6 +110,7 @@ module rotateStage #(
                 (( 1<<SHIFT ) > (1<<$clog2(MAXZ)) ) ? $clog2(MAXZ) : SHIFT;
     localparam int sh_val_mod = (1 << SHIFT) % MAXZ;
     localparam logic o_o = (!DOES_EXIST || sh_val_mod == 0 );
+    
 
     generate
         case(o_o) 
@@ -121,13 +138,16 @@ module pipelinedCircularShifterFMAX #(
 )(
     input logic CLK,
     input logic rst_n,
+    input logic valid_in,
     input logic [MAXZ-1:0] in_data,
     input logic [$clog2(MAXZ)-1:0] shift_val,
-    output logic [MAXZ-1:0] out_data
+    output logic [MAXZ-1:0] out_data,
+    output logic valid_out
 );
-
+    
     localparam int NumStages = $clog2(MAXZ);
     
+    logic [NumStages:0] valid_pipe;
     //pipeline stages, stage[0] is the currently most recently streamed in data
     logic [MAXZ-1:0] stage [0:NumStages];  
     assign stage[0] = in_data;
@@ -155,6 +175,18 @@ module pipelinedCircularShifterFMAX #(
         end
     endgenerate
     
+    always_ff @(posedge CLK) begin
+        if (!rst_n)
+            valid_pipe <= '0;
+        else begin
+            valid_pipe[0] <= valid_in;
+            for (int i = 1; i <= NumStages; i++)
+                valid_pipe[i] <= valid_pipe[i-1];
+        end
+    end
+
     assign out_data = stage[NumStages];
+
+    assign valid_out = valid_pipe[NumStages];
 
 endmodule
