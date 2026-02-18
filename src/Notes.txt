@@ -63,61 +63,6 @@ Function and stuff. But now I need to hook it up
     // while creating a somewhat more generic circuit that is potentially capable,
     // of on the fly swithching between code lenghts and maybe even rates. 
     // -------------------------------------------------------------------------
-    
-module rotate_right #(
-    parameter int WIDTH = 32
-)(
-    input  logic [WIDTH-1:0] data_in,
-    input  logic [$clog2(WIDTH)-1:0] rot_amt,
-    output logic [WIDTH-1:0] data_out
-);
-
-    logic [2*WIDTH-1:0] doubled;
-
-    // Pure wiring — no cost in hardware
-    assign doubled = {data_in, data_in};
-
-    // Single combinational select
-    assign data_out = doubled[(WIDTH-1) + rot_amt -: WIDTH];
-
-function automatic logic [WIDTH-1:0]
-    rotate_right (
-        input logic [WIDTH-1:0] data,
-        input logic [$clog2(WIDTH)-1:0] rot
-    );
-    logic [2*WIDTH-1:0] doubled;
-    begin
-        doubled     = {data, data};
-        rotate_right = doubled[(WIDTH-1) + rot -: WIDTH];
-    end
-endfunction
-
-
-
-rot1 = rotate_right(data1, shift1);
-rot2 = rotate_right(data2, shift2);
-rot3 = rotate_right(data3, shift3);
-rot4 = rotate_right(data4, shift4);
-
-always_comb begin
-    rotated = rotate_right(reg_in, shift_amt);
-end
-
-    always_ff @(posedge clk) begin
-        out_data <= rotated;
-    end
-
-
-
-    //     genvar inari;
-    //  for ( inari = 0; inari < NUM_PARITY_BLKS; inari++) begin
-    //                 always_ff @(posedge CLK) begin
-    //                     if()
-    //                     accum_regs[inari] << accum_regs[inari] ^
-                    
-    //                 end
-    //             end
-    
 
 Currently the hook up of the actual encoder to the memory controller makes no sense
 its not paramatized correctly. It needs to be changed so that there are generation characteristics
@@ -132,11 +77,11 @@ those interfaces when using a slower/lower encoding selection.
 
 
 //===================================================
-// LDPC ROM example with parameter-driven memory layout
+// ROM example with parameter-driven memory layout
 //===================================================
 
-module ldpc_rom_example #(
-    parameter int WIDTH       = 8,      // width of each ROM entry
+module rom_example #(
+    parameter int WIDTH       = 8,      
     parameter int DEPTH       = 16,     // number of rows
     parameter int MEM_LAYOUT  = 0       // 0 = 1D, 1 = 2D
 )(
@@ -189,7 +134,6 @@ module ldpc_rom_example #(
 endmodule
 
 
-
 `define NUM_SUPPORTED_BLK_LEN                   3
 `define NUM_INFO_BLKS_PER_CODE_BLK              20
 `define NUM_PARITY_BLKS_PER_CODE_BLK            4
@@ -197,27 +141,4 @@ endmodule
 // For single rate LUT Highest Z supported is also the only Z supported and used   
 `define ROM_TYPE                                1
 
-
-
-
-/Call the function for each of the Lanes 
-    genvar inari;
-    generate 
-        for(inari = 0; inari<NUM_PARITY_BLKS; inari++) begin : ROTATE_INST
-            assign rotated_data[i] = Right_CyclicShifter(info_blk ,shift_values[i] )
-        end
-
-    endgenerate
-
-
-    // data_out[i+q] = memory[addr + (( i*(DEPTH/THE_Z) + q )-1)]; 
-    always_comb begin
-        for(int i=0; i<NUM_PARITY_BLKS*; i++) begin
-            for(int q=0; q<P_LVL; q++) begin
-                data_out[i+q] = memory[addr+q +(i*(DEPTH/NUM_PARITY_BLKS)-1)];
-            end
-        end
-    end
-endmodule
-
-ff                                                                                                                                                                    
+/*verilator split_var*/  ; 
