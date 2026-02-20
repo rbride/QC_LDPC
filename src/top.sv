@@ -32,6 +32,7 @@ module QCLDPCEncoderController #(
     parameter int ROM_TYPE                          =               1,          
     parameter int Z_VALUE_ARRAY[NUM_OF_SUPPORTED_Z] =               {27, 54, 81},
     parameter int LEVEL_OF_PARALLELIZATION          =               1,
+    parameter int ROTATES_PER_CYCLE                 =               1,      //TODO: CHANGE THIS NAME
     // -------------------------------------------------------------------------    
     // LocalParam Defines, a Lot of them are alias for readability
     // -------------------------------------------------------------------------    
@@ -54,15 +55,14 @@ module QCLDPCEncoderController #(
     input logic en_enc,  
     //TODO assert   assert property (@(posedge clk) $onehot(req_Z)) 
     input logic [ZsN-1:0] req_z,  //Unused in ROM_Type 0 Highest Value corresponds to 
-    input  logic [(MaxZ*PLvl)-1:0]                  data_in,
+    input  logic [(MaxZ*PLvl)-1:0]                  i_data,
     output logic [(MaxZ*(NumPBlks+IBlksNum))-1:0]   p_data_out
 );
     // -------------------------------------------------------------------------    
     // Declaration of Internal Module Signals
     // -------------------------------------------------------------------------    
-    //Don't need to initialize because it gets written to anyway and it doesn't matter what start values are
-    logic [(MaxZ*(IBlksNum+NumPBlks))-1:0] data_buffer;
-    
+    reg [MaxZ-1:0] i_data_processed;
+
     logic [MaxZ-1:0] parity_blk[(NumPBlks*MaxZ)-1:0];    
 
     //Define storage registers for the intermediate values used by accumulators one for each generated Parity Block
@@ -75,6 +75,15 @@ module QCLDPCEncoderController #(
     logic [MaxZ-1:0] rotated_data [0:$clog2(NumPBlks*PLvl)-1];
 
     logic [$clog2(IBlksNum/PLvl)-1:0] c_cnt;
+
+    //Calculate # of stages of the Shifter Pipeline, to determine the needed Valid depth
+    //TODO: Remove this from the Pipelined Shifter code and make it a parameter MAYBE
+    localparam int numPipelineSteps = ($clog2(MaxZ) % ROTATES_PER_CYCLE  != 0) ?
+                                      (($clog2(MaxZ) / ROTATES_PER_CYCLE) +1 )  :
+                                      ($clog2(MaxZ) / ROTATES_PER_CYCLE);
+
+    logic [numPipelineSteps:0]  valid_flag_pipe;
+    
 
     // -------------------------------------------------------------------------    
     // Generate ROM
@@ -122,11 +131,10 @@ module QCLDPCEncoderController #(
 
     // -------------------------------------------------------------------------    
     // Stage 0: Input register / Zero padding if input is not width of Max Z
-    //      TODO: Must add support for P_Level
     // -------------------------------------------------------------------------    
     always_ff @(posedge CLK) begin
         if(!rst_n)
-            info_reg <= '0;
+            i_data_processed <= '0;
         else begin
             // NOTE: Note to the user, I decided not to go about using hours of my life working on 
             // complex bunch of code to manage the input of this  one hot case if you change the number
@@ -135,35 +143,64 @@ module QCLDPCEncoderController #(
             unique case (req_z)
                 //The lowest bit corresponds to a selection of the first item in the array
                 3'b001 : 
-                    cur_info_reg <= {{ (MaxZ-Z_VALUE_ARRAY[0]){1'b0} }, data_in[(Z_VALUE_ARRAY[0]-1):0] };
+                    i_data_processed <= {{ (MaxZ-Z_VALUE_ARRAY[0]){1'b0} }, i_data[(Z_VALUE_ARRAY[0]-1):0] };
 
                 3'b010 : 
-                    cur_info_reg <= {{ (MaxZ-Z_VALUE_ARRAY[1]){1'b0} }, data_in[(Z_VALUE_ARRAY[1]-1):0] };
+                    i_data_processed <= {{ (MaxZ-Z_VALUE_ARRAY[1]){1'b0} }, i_data[(Z_VALUE_ARRAY[1]-1):0] };
                     
                 3'b100 : 
-                    cur_info_reg <= data_in;
+                    i_data_processed <= i_data;
 
                 default : 
-                    cur_info_reg <= '0;
+                    i_data_processed <= '0;
             endcase
         end
     end
 
     // -------------------------------------------------------------------------    
-    // Stage 1 - : Input register / Zero padding if input is not width of Max Z
+    // Stage 1-N, Feed the data into the Circular Rotation Pipeline
     // -------------------------------------------------------------------------    
+    genvar nori; 
+    generate
+        for(nori=0; nori<NumPBlks*PLvl; nori++) begin
+            pipelinedCircularShifter #(
+                .MAXZ(MaxZ), .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE)
+            )
+            circ_shftr_inst (
+                .CLK(CLK), .rst_n(rst_n), .valid_in()
+            );
+        end
+    endgenerate
 
 
+pipelinedCircularShifter #(
+            .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE_2)
+        ) 
+        dut2 (
+            .CLK(clk), .rst_n(rst_n), .valid_in(valid_in),
+            .in_data(in_data), .shift_val(shift_val), 
+            .valid_out(valid_out2), .out_data(out_data2)
+    );    
+
+   //Some old note that was still here, I'll leave it for now 
     //THE REQUESTED ADDRESS FOR THE MEMORY NEEDS TO BE #of Z * depth / num_z -1
     // i.e. 81 is 2 in the array, so starting address is 288/3 = 96, *2 = 192 - 1 = 191
-    // * 
 
 
+    // -------------------------------------------------------------------------    
+    // Control Signal FSM Definition, Obviously connected to the above
+    // But split into its own definition for readability or something idk #TODO: <--- Top tier Comment Ryan
+    // -------------------------------------------------------------------------    
     always_ff @(posedge CLK) begin
         if(!rst_n) begin
-            c_cnt   <= '0;
+            valid_flag_pipe <= '0;
+        end else begin
+            valid_flag_pipe[0] <= en_enc;
+            for(int i = 1; i <= numPipelineSteps; i++) begin
+                valid_flag_pipe[i] <= valid_flag_pipe[i-1];
+            end
         end
-
     end
+
     
 endmodule

@@ -23,9 +23,7 @@ module pipelinedCircularShifter #(
     parameter int MAXZ                    = 81,
     parameter int ROTATES_PER_CYCLE       = 1 //Should throw an error on 0
 )(
-    input logic CLK,
-    input logic rst_n,
-    input logic valid_in,
+    input logic CLK, rst_n, valid_in,
     input logic [MAXZ-1:0] in_data,
     input logic [$clog2(MAXZ)-1:0] shift_val,
     output logic [MAXZ-1:0] out_data,
@@ -43,6 +41,7 @@ module pipelinedCircularShifter #(
     assign stage_regs[0] = in_data;
         
     genvar i, qq;
+    
     generate
         for(i=0; i<NumStages; i++) begin : PipelineStage
             //Wire array for each substep output

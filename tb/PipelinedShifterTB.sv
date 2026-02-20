@@ -25,7 +25,7 @@ module tb_pipelinedCircularShifter;
     logic pipe5waiting, pipe6waiting, pipe7waiting, pipeFMaxwaiting;
 
     // ------------------------------------------------------------
-    // Instatiate all the shifters 
+    // Instantiate all the shifters 
     // ------------------------------------------------------------
     pipelinedCircularShifter #(
             .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE_1)
@@ -131,7 +131,6 @@ module tb_pipelinedCircularShifter;
         tick(5);
         rst_n = 1;
 
-
         $display("STARTING pipelinedCircularShifter TEST (MAXZ=%0d) For all Permutations Allowed Under MAXZ of 81", MAXZ);
 
         for (int test_idx = 0; test_idx < 500; test_idx++) begin
@@ -147,13 +146,14 @@ module tb_pipelinedCircularShifter;
             pipe5waiting = 0; pipe6waiting = 0; pipe7waiting = 0; pipeFMaxwaiting = 0;
             
             //Set it to low after a single Cycle, as the data only enters 
-            //When Previous is done TODO: Check cascading 
+            //When Previous is done TODO: Check cascading through the Pipeline 
             tick(1);
             valid_in = 0;
 
             //Wait for Each DUT To Assert Valid_out
-            while( !(pipe1waiting & pipe2waiting & pipe3waiting & pipeFMaxwaiting & pipe4waiting
-                        &pipe5waiting &pipe6waiting &pipe7waiting )) begin
+            while( !(pipe1waiting & pipe2waiting & pipe3waiting & pipeFMaxwaiting 
+                        & pipe4waiting &pipe5waiting &pipe6waiting &pipe7waiting )) begin
+                
                 tick(1);
 
                 if (valid_out1) begin
@@ -185,7 +185,6 @@ module tb_pipelinedCircularShifter;
                         total_fail++;
                     end
                 end
-                
                 
                 if (valid_out4) begin
                     pipe4waiting = 1'b1;
@@ -236,7 +235,6 @@ module tb_pipelinedCircularShifter;
                         total_fail++;
                     end
                 end
-
             end
         end
         
