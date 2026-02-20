@@ -68,7 +68,9 @@ module QCLDPCEncoderController #(
     // -------------------------------------------------------------------------    
     reg [MaxZ-1:0] i_data_processed;
     //Tbh could be wire Top bit stays for the purpose of the valid out
-    logic [NumPBlks*PLvl-1:0][MaxZ:0] rotator_o;
+    //TODO TODO ensure its treated as a wire remove the definition of "Wire" after design completes, this is just 
+    //TO gate sythnesis and design because I am tired. 
+    wire logic [NumPBlks*PLvl-1:0][MaxZ:0] rotator_o;
 
     logic [MaxZ-1:0] parity_blk[(NumPBlks*MaxZ)-1:0];    
 
@@ -89,13 +91,15 @@ module QCLDPCEncoderController #(
                                       (($clog2(MaxZ) / ROTATES_PER_CYCLE) +1 )  :
                                       ($clog2(MaxZ) / ROTATES_PER_CYCLE);
 
-    logic [numPipelineSteps+1:0]  valid_flag_pipe; 
+    logic valid_flag_pipe; 
     //No reason to take make this one hot, it has the time to check the lower bits, just make the 
     //The highest bit its one flag for a quick check on the cycle after the computation is done
     //So don't -1
     logic [$clog2(IBlksNum):0]    pipeline_cnt;
 
-    typedef enum  logic {IDLE, LOAD, GEN_PARITY, PUSH_DATA} state_t;
+    typedef enum  logic {IDLE, PIPE_PROCESS, GEN_PARITY, PUSH_DATA} state_t;
+    state_t encoder_state;
+
 
     // -------------------------------------------------------------------------    
     // Generate ROM
@@ -152,47 +156,78 @@ module QCLDPCEncoderController #(
                 .MAXZ(MaxZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE)
             )
             circ_shftr_inst (
-                .CLK(CLK), .rst_n(rst_n), .valid_in(valid_flag_pipe[1]), 
+                .CLK(CLK), .rst_n(rst_n), .valid_in(valid_flag_pipe), 
                 .in_data(i_data_processed), .shift_val(shift_values[nori]),
                 .out_data(rotator_o[nori][MaxZ-1:0]), .valid_out(rotator_o[nori][MaxZ])
             );
         end
     endgenerate
 
-
-
-    // -------------------------------------------------------------------------    
-    // Stage 0: Input register / Zero padding if input is not width of Max Z
-    // -------------------------------------------------------------------------    
+    
     always_ff @(posedge CLK) begin
         if(!rst_n)
-            i_data_processed <= '0;
-            shift_addr <= '0;
-
+            i_data_processed    <= '0;
+            shift_addr          <= '0;
+            valid_flag_pipe     <= '0;
+            pipeline_cnt        <= '0;
+            valid_flag_pipe     <- '0;
+            encoder_state       <= IDLE;
         else begin
-            // NOTE: Note to the user, I decided not to go about using hours of my life working on 
-            // complex bunch of code to manage the input of this  one hot case if you change the number
-            // of possible combinations from the default 3 so you have to change it yourself manually because 
-            // I felt like not spending a bunch of time on this
-            unique case (req_z)
-                //The lowest bit corresponds to a selection of the first item in the array
-                3'b001 : begin 
-                    i_data_processed <= {{ (MaxZ-Z_VALUE_ARRAY[0]){1'b0} }, i_data[(Z_VALUE_ARRAY[0]-1):0] };
-                    shift_addr <= '0;   //************ IT SHOULD BE FINE AN INFERED COMBINATION WITH THE COMPILER 
-                    ///DIRECTOR SET IN THE FILE. REMOVE THIS NOTE AFTER SYNTHESIS CHECK
+            unique case (encoder_state)
+                // -------------------------------------------------------------------------    
+                //  Stage 0:    Check the valid and ready handshake to feed valid into Pipe
+                //              Zero pad input into pipeline if is is not width of Max Z
+                // -------------------------------------------------------------------------    
+                IDLE : begin
+                // FIXME : Note to the user, I decided not to go about using hours of my life working on 
+                // complex bunch of code to manage the input of this  one hot case if you change the number
+                // of possible combinations from the default 3 so you have to change it yourself manually because 
+                // I felt like not spending a bunch of time on this
+                    unique case (req_z)
+                        //The lowest bit corresponds to a selection of the first item in the array
+                        3'b001 : begin 
+                            i_data_processed <= {{ (MaxZ-Z_VALUE_ARRAY[0]){1'b0} }, i_data[(Z_VALUE_ARRAY[0]-1):0] };
+                            shift_addr <= '0;   //************ IT SHOULD BE FINE AN INFERED COMBINATIONAL LINE WITH THE COMPILER 
+                            ///Director SET IN THE FILE. REMOVE THIS NOTE AFTER SYNTHESIS CHECK #FIXME 
+                        end
+                        3'b010 : begin 
+                            i_data_processed <= {{ (MaxZ-Z_VALUE_ARRAY[1]){1'b0} }, i_data[(Z_VALUE_ARRAY[1]-1):0] };
+                            shift_addr <= (PmRomDepth/ZsN)-1;
+                        end
+                        3'b100 : begin 
+                            i_data_processed <= i_data;
+                            shift_addr <= (PmRomDepth/ZsN*2)-1;
+                        end
+                        default : begin 
+                            i_data_processed <= '0;
+                            shift_addr <= '0;
+                        end
+                    endcase
+                    
+                    if(valid_in && in_ready)
+                        valid_flag_pipe <= '1;
+                        encoder_state   <= PIPE_PROCESS;
+                    else 
+                        valid_flag_pipe <= '0;      
+                        encoder_state   <= IDLE;      
                 end
-                3'b010 : begin 
-                    i_data_processed <= {{ (MaxZ-Z_VALUE_ARRAY[1]){1'b0} }, i_data[(Z_VALUE_ARRAY[1]-1):0] };
-                    shift_addr <= (PmRomDepth/ZsN)-1;
+
+                PIPE_PROCESS : begin
+
                 end
-                3'b100 : begin 
-                    i_data_processed <= i_data;
-                    shift_addr <= (PmRomDepth/ZsN*2)-1;
+
+                GEN_PARITY : begin
+
                 end
-                default : begin 
-                    i_data_processed <= '0;
-                    shift_addr <= '0;
+
+                PUSH_DATA : begin
+
                 end
+
+
+
+
+
             endcase
         end
     end
@@ -206,20 +241,19 @@ module QCLDPCEncoderController #(
     //THE REQUESTED ADDRESS FOR THE MEMORY NEEDS TO BE #of Z * depth / num_z -1
     // i.e. 81 is 2 in the array, so starting address is 288/3 = 96, *2 = 192 - 1 = 191
 
-    // -------------------------------------------------------------------------    
-    // Control Signal FSM Definition, Obviously connected to the above
-    // But split into its own definition for readability or something idk #TODO: <--- Top tier Comment Ryan
-    // -------------------------------------------------------------------------    
-    always_ff @(posedge CLK) begin
-        if(!rst_n) begin
-            valid_flag_pipe <= '0;
-            pipeline_cnt    <= '0;
-        end else begin
-            valid_flag_pipe[0] <= in_valid;
-            for(int i = 1; i <= numPipelineSteps; i++) begin
-                valid_flag_pipe[i] <= valid_flag_pipe[i-1];
-            end
-        end
+    // // -------------------------------------------------------------------------    
+    // // Control Signal FSM Definition, Obviously connected to the above
+    // // But split into its own definition for readability or something idk #FIXME: <--- Top tier Comment Ryan
+    // // -------------------------------------------------------------------------    
+    // always_ff @(posedge CLK) begin
+    //     if(!rst_n) begin
+            
+    //     end else begin
+    //         valid_flag_pipe[0] <= in_valid;
+    //         for(int i = 1; i <= numPipelineSteps; i++) begin
+    //             valid_flag_pipe[i] <= valid_flag_pipe[i-1];
+    //         end
+    //     end
 
 
     end
