@@ -21,7 +21,7 @@
 // ==========================================================================\
 module pipelinedCircularShifter #(     
     parameter int MAXZ                    = 81,
-    parameter int ROTATES_PER_CYCLE       = 1 //Should throw an error on 0
+    parameter int ROTATES_PER_CYCLE       = 2 //Should throw an error on 0
 )(
     input logic CLK, rst_n, valid_in,
     input logic [MAXZ-1:0] in_data,

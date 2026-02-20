@@ -10,7 +10,7 @@
 //infers Ultra (* ram_style = "ultra" *) reg [data_size-1:0] myram [2**addr_size-1:0]; Vivado
 //infers LUT(* rom_style = "distributed" *) reg [data_size-1:0] myrom [2**addr_size-1:0]; Vivado
 //infers block (* rom_style = "block" *) reg [data_size-1:0] myrom [2**addr_size-1:0]; Vivado 
-
+// Quartus: // synthesis ramstyle = "logic" or "lcell_ram"   Forces LUT based
 /* Note: "-" (zero block/skip) values are stored as the maximum value available for the 
     given WIDTH as none of the possible Z values are equal to The maximum value of the WIDTH   */
 // -------------------------------------------------------------------------
@@ -28,7 +28,7 @@ module ProtoMatrixRom_SingleLUT #(
 )(
     input wire logic [ADDRW-1:0] addr,
     //output           [WIDTH-1:0] data_out [0:$clog2(NUM_PARITY_BLKS*P_LVL)-1]
-    output           [WIDTH-1:0] data_out [NUM_PARITY_BLKS*P_LVL-1]
+    output           [WIDTH-1:0] data_out [0:NUM_PARITY_BLKS*P_LVL-1]
 ); 
     
     (* ram_style = "distributed" *) logic [WIDTH-1:0] memory [0:DEPTH-1];
@@ -72,7 +72,7 @@ module ProtoMatrixRom_MultiLUT #(
 )(
     input wire logic [ADDRW-1:0] addr,
     //output           [WIDTH-1:0] data_out [0:$clog2(NUM_PARITY_BLKS*P_LVL)-1]
-    output           [WIDTH-1:0] data_out [NUM_PARITY_BLKS*P_LVL-1]
+    output           [WIDTH-1:0] data_out [0:NUM_PARITY_BLKS*P_LVL-1]
 
 );
  
@@ -110,7 +110,7 @@ module ProtoMatrixRom_BRAM #(
 )(
     input wire logic [ADDRW-1:0] addr,
     //output           [WIDTH-1:0] data_out [0:$clog2(NUM_PARITY_BLKS)-1]
-    output           [WIDTH-1:0] data_out [NUM_PARITY_BLKS*P_LVL-1]
+    output           [WIDTH-1:0] data_out [0:NUM_PARITY_BLKS*P_LVL-1]
 );
 
     (* ram_style = "block" *) reg [WIDTH-1:0] ram [0:DEPTH-1];

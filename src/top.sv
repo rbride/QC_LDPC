@@ -62,6 +62,9 @@ module QCLDPCEncoderController #(
     // Declaration of Internal Module Signals
     // -------------------------------------------------------------------------    
     reg [MaxZ-1:0] i_data_processed;
+    //Tbh could be wire Top bit stays for the purpose of the valid out
+    logic [NumPBlks*PLvl-1:0][MaxZ:0] rotator_o;
+
 
     logic [MaxZ-1:0] parity_blk[(NumPBlks*MaxZ)-1:0];    
 
@@ -82,8 +85,11 @@ module QCLDPCEncoderController #(
                                       (($clog2(MaxZ) / ROTATES_PER_CYCLE) +1 )  :
                                       ($clog2(MaxZ) / ROTATES_PER_CYCLE);
 
-    logic [numPipelineSteps:0]  valid_flag_pipe;
-    
+    logic [numPipelineSteps+1:0]  valid_flag_pipe; 
+    //No reason to take make this one hot, it has the time to check the lower bits, just make the 
+    //The highest bit its one flag for a quick check on the cycle after the computation is done
+    //So don't -1
+    logic [$clog2(IBlksNum):0]    pipeline_cnt;
 
     // -------------------------------------------------------------------------    
     // Generate ROM
@@ -142,17 +148,23 @@ module QCLDPCEncoderController #(
             // I felt like not spending a bunch of time on this
             unique case (req_z)
                 //The lowest bit corresponds to a selection of the first item in the array
-                3'b001 : 
+                3'b001 : begin 
                     i_data_processed <= {{ (MaxZ-Z_VALUE_ARRAY[0]){1'b0} }, i_data[(Z_VALUE_ARRAY[0]-1):0] };
-
-                3'b010 : 
+                    shift_addr <= '0;   //************ IT SHOULD BE FINE AN INFERED COMBINATION WITH THE COMPILER 
+                    ///DIRECTOR SET IN THE FILE. REMOVE THIS NOTE AFTER SYNTHESIS CHECK
+                end
+                3'b010 : begin 
                     i_data_processed <= {{ (MaxZ-Z_VALUE_ARRAY[1]){1'b0} }, i_data[(Z_VALUE_ARRAY[1]-1):0] };
-                    
-                3'b100 : 
+                    shift_addr <= (PmRomDepth/ZsN)-1;
+                end
+                3'b100 : begin 
                     i_data_processed <= i_data;
-
-                default : 
+                    shift_addr <= (PmRomDepth/ZsN*2)-1;
+                end
+                default : begin 
                     i_data_processed <= '0;
+                    shift_addr <= '0;
+                end
             endcase
         end
     end
@@ -164,28 +176,20 @@ module QCLDPCEncoderController #(
     generate
         for(nori=0; nori<NumPBlks*PLvl; nori++) begin
             pipelinedCircularShifter #(
-                .MAXZ(MaxZ), .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE)
+                .MAXZ(MaxZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE)
             )
             circ_shftr_inst (
-                .CLK(CLK), .rst_n(rst_n), .valid_in()
+                .CLK(CLK), .rst_n(rst_n), .valid_in(valid_flag_pipe[1]), 
+                .in_data(i_data_processed), .shift_val(shift_values[]),
+                .out_data(rotator_o[nori][MaxZ-1:0]), .valid_out(rotator_o[nori][MaxZ])
             );
         end
     endgenerate
 
 
-pipelinedCircularShifter #(
-            .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE_2)
-        ) 
-        dut2 (
-            .CLK(clk), .rst_n(rst_n), .valid_in(valid_in),
-            .in_data(in_data), .shift_val(shift_val), 
-            .valid_out(valid_out2), .out_data(out_data2)
-    );    
-
-   //Some old note that was still here, I'll leave it for now 
+    //Some old note that was still here, I'll leave it for now 
     //THE REQUESTED ADDRESS FOR THE MEMORY NEEDS TO BE #of Z * depth / num_z -1
     // i.e. 81 is 2 in the array, so starting address is 288/3 = 96, *2 = 192 - 1 = 191
-
 
     // -------------------------------------------------------------------------    
     // Control Signal FSM Definition, Obviously connected to the above
@@ -194,12 +198,17 @@ pipelinedCircularShifter #(
     always_ff @(posedge CLK) begin
         if(!rst_n) begin
             valid_flag_pipe <= '0;
+            pipeline_cnt    <= '0;
         end else begin
             valid_flag_pipe[0] <= en_enc;
             for(int i = 1; i <= numPipelineSteps; i++) begin
                 valid_flag_pipe[i] <= valid_flag_pipe[i-1];
             end
         end
+
+
+
+
     end
 
     
