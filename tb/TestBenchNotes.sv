@@ -437,3 +437,13 @@ module tb_pipelinedCircularShifter;
     end
 
 endmodule
+
+
+
+task send_shift(input logic [7:0] s);
+  cmd_if.shift <= s;
+  cmd_if.valid <= 1;
+  wait(cmd_if.ready);
+  @(posedge clk);
+  cmd_if.valid <= 0;
+endtask

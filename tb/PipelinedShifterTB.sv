@@ -2,148 +2,101 @@
 module tb_pipelinedCircularShifter;
 
     // Test parameters
-    localparam int MAXZ = 81;
-    localparam int PIPE1_ROTATES_PER_CYCLE = 1;  //One for every Split 
-    localparam int PIPE2_ROTATES_PER_CYCLE = 2;  
-    localparam int PIPE3_ROTATES_PER_CYCLE = 3;  
-    localparam int PIPE4_ROTATES_PER_CYCLE = 4;   
-    localparam int PIPE5_ROTATES_PER_CYCLE = 5;  
-    localparam int PIPE6_ROTATES_PER_CYCLE = 6;  
-    localparam int PIPE7_ROTATES_PER_CYCLE = 7;  
+    localparam int MAXZ = 81;   localparam int ROTATES_PER_CYCLE_1 = 1;  
+    localparam int ROTATES_PER_CYCLE_2 = 2;  localparam int ROTATES_PER_CYCLE_3 = 3;  
+    localparam int ROTATES_PER_CYCLE_4 = 4;  localparam int ROTATES_PER_CYCLE_5 = 5;  
+    localparam int ROTATES_PER_CYCLE_6 = 6;  localparam int ROTATES_PER_CYCLE_7 = 7;  
     
     // DUT IO
-    logic clk;
-    logic rst_n;
-    logic valid_in;
+    logic clk, rst_n, valid_in;
     logic [MAXZ-1:0] in_data;
     logic [$clog2(MAXZ)-1:0] shift_val;
     logic [MAXZ-1:0] expected;
 
     //Pipeline Valid Signals    
-    logic valid_out1, valid_out2, valid_out3;
-    logic valid_out4, valid_out5, valid_out6;
-    logic valid_out7, valid_outFMax;
+    logic valid_out1, valid_out2, valid_out3, valid_out4;
+    logic valid_out5, valid_out6, valid_out7, valid_outFMax;
 
     //Pipeline Data output Signals
-    logic [MAXZ-1:0] out_data1, out_data2;
-    logic [MAXZ-1:0] out_data3, out_data4;
-    logic [MAXZ-1:0] out_data5, out_data6;
-    logic [MAXZ-1:0] out_data7, out_dataFMax;
+    logic [MAXZ-1:0] out_data1, out_data2, out_data3, out_data4;
+    logic [MAXZ-1:0] out_data5, out_data6, out_data7, out_dataFMax;
 
-    logic pipe1waiting, pipe2waiting, pipe3waiting;
-    logic pipe4waiting, pipe5waiting, pipe6waiting;
-    logic pipe7waiting, pipeFMaxwaiting;
+    logic pipe1waiting, pipe2waiting, pipe3waiting, pipe4waiting;
+    logic pipe5waiting, pipe6waiting, pipe7waiting, pipeFMaxwaiting;
 
     // ------------------------------------------------------------
     // Instatiate all the shifters 
     // ------------------------------------------------------------
     pipelinedCircularShifter #(
-        .MAXZ(MAXZ),
-        .ROTATES_PER_CYCLE(PIPE1_ROTATES_PER_CYCLE)
-    ) dut1 
-    (
-        .CLK(clk),
-        .rst_n(rst_n),
-        .valid_in(valid_in),
-        .in_data(in_data),
-        .shift_val(shift_val),
-        .valid_out(valid_out1),
-        .out_data(out_data1)
+            .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE_1)
+        ) 
+        dut1 (
+            .CLK(clk), .rst_n(rst_n), .valid_in(valid_in),
+            .in_data(in_data), .shift_val(shift_val),
+            .valid_out(valid_out1), .out_data(out_data1)
     );
     pipelinedCircularShifter #(
-        .MAXZ(MAXZ),
-        .ROTATES_PER_CYCLE(PIPE2_ROTATES_PER_CYCLE)
-    ) dut2
-    (
-        .CLK(clk),
-        .rst_n(rst_n),
-        .valid_in(valid_in),
-        .in_data(in_data),
-        .shift_val(shift_val),
-        .valid_out(valid_out2),
-        .out_data(out_data2)
+            .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE_2)
+        ) 
+        dut2 (
+            .CLK(clk), .rst_n(rst_n), .valid_in(valid_in),
+            .in_data(in_data), .shift_val(shift_val), 
+            .valid_out(valid_out2), .out_data(out_data2)
     );
     pipelinedCircularShifter #(
-        .MAXZ(MAXZ),
-        .ROTATES_PER_CYCLE(PIPE3_ROTATES_PER_CYCLE)
-    ) dut3 
-    (
-        .CLK(clk),
-        .rst_n(rst_n),
-        .valid_in(valid_in),
-        .in_data(in_data),
-        .shift_val(shift_val),
-        .valid_out(valid_out3),
-        .out_data(out_data3)
+            .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE_3)
+        ) 
+        dut3 (
+            .CLK(clk), .rst_n(rst_n), .valid_in(valid_in), 
+            .in_data(in_data), .shift_val(shift_val), 
+            .valid_out(valid_out3), .out_data(out_data3)
     );
     pipelinedCircularShifter #(
-        .MAXZ(MAXZ),
-        .ROTATES_PER_CYCLE(PIPE4_ROTATES_PER_CYCLE)
-    ) dut4 
-    (
-        .CLK(clk),
-        .rst_n(rst_n),
-        .valid_in(valid_in),
-        .in_data(in_data),
-        .shift_val(shift_val),
-        .valid_out(valid_out4),
-        .out_data(out_data4)
+            .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE_4)
+        ) 
+        dut4 (
+            .CLK(clk), .rst_n(rst_n), .valid_in(valid_in), 
+            .in_data(in_data), .shift_val(shift_val), 
+            .valid_out(valid_out4), .out_data(out_data4)
     );
     pipelinedCircularShifter #(
-        .MAXZ(MAXZ),
-        .ROTATES_PER_CYCLE(PIPE5_ROTATES_PER_CYCLE)
-    ) dut5 
-    (
-        .CLK(clk),
-        .rst_n(rst_n),
-        .valid_in(valid_in),
-        .in_data(in_data),
-        .shift_val(shift_val),
-        .valid_out(valid_out5),
-        .out_data(out_data5)
+            .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE_5)
+        )
+        dut5 (
+            .CLK(clk), .rst_n(rst_n), .valid_in(valid_in), 
+            .in_data(in_data), .shift_val(shift_val), 
+            .valid_out(valid_out5), .out_data(out_data5)
     );
     pipelinedCircularShifter #(
-        .MAXZ(MAXZ),
-        .ROTATES_PER_CYCLE(PIPE6_ROTATES_PER_CYCLE)
-    ) dut6
-    (
-        .CLK(clk),
-        .rst_n(rst_n),
-        .valid_in(valid_in),
-        .in_data(in_data),
-        .shift_val(shift_val),
-        .valid_out(valid_out6),
-        .out_data(out_data6)
+            .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE_6)
+        ) 
+        dut6 (
+            .CLK(clk), .rst_n(rst_n), .valid_in(valid_in),
+            .in_data(in_data), .shift_val(shift_val), 
+            .valid_out(valid_out6), .out_data(out_data6)
+    );
+    pipelinedCircularShifter #(
+            .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE_7)
+        ) 
+        dut7 (
+            .CLK(clk), .rst_n(rst_n), .valid_in(valid_in), 
+            .in_data(in_data), .shift_val(shift_val), 
+            .valid_out(valid_out7), .out_data(out_data7)
     );
 
-    pipelinedCircularShifter #(
-        .MAXZ(MAXZ),
-        .ROTATES_PER_CYCLE(PIPE6_ROTATES_PER_CYCLE)
-    ) dut7
-    (
-        .CLK(clk),
-        .rst_n(rst_n),
-        .valid_in(valid_in),
-        .in_data(in_data),
-        .shift_val(shift_val),
-        .valid_out(valid_out7),
-        .out_data(out_data7)
-    );
-
-    // Instantiate DUTs
+    // The Original Design that isn't configurable 
     pipelinedCircularShifterFMAX #(
-        .MAXZ(MAXZ)
-    ) dutFMax (
-        .CLK(clk),
-        .rst_n(rst_n),
-        .valid_in(valid_in),
-        .in_data(in_data),
-        .shift_val(shift_val),
-        .out_data(out_dataFMax),
-        .valid_out(valid_outFMax)
+            .MAXZ(MAXZ)
+        ) 
+        dutFMax (
+            .CLK(clk), .rst_n(rst_n), .valid_in(valid_in),
+            .in_data(in_data), .shift_val(shift_val), 
+            .out_data(out_dataFMax), .valid_out(valid_outFMax)
     );
 
-
+    // ------------------------------------------------------------
+    // Setup the testbench clock, & define needed tasks & functions
+    // ------------------------------------------------------------
     initial clk = 0;
     always #1 clk = ~clk;
     //Time waste task
@@ -168,13 +121,13 @@ module tb_pipelinedCircularShifter;
     // ------------------------------------------------------------
     initial begin
         int total_tests = 0;        int total_fail  = 0;
-        pipe1waiting = 0;   pipe2waiting = 0;   pipe3waiting = 0;
-        pipe4waiting = 0;   pipe5waiting = 0;   pipe6waiting = 0;
-        pipe7waiting = 0;   pipeFMaxwaiting = 0;
+        pipe1waiting = 0; pipe2waiting = 0; pipe3waiting = 0; pipe4waiting = 0;
+        pipe5waiting = 0; pipe6waiting = 0; pipe7waiting = 0; pipeFMaxwaiting = 0;
         
         $urandom(seed);
         //Reset
         rst_n = 0;  valid_in = 0;   in_data = '0;   shift_val = '0;
+        
         tick(5);
         rst_n = 1;
 
@@ -190,11 +143,11 @@ module tb_pipelinedCircularShifter;
             
             valid_in  = 1;
 
-            pipe1waiting = 0;   pipe2waiting = 0;   pipe3waiting = 0;
-            pipe4waiting = 0;   pipe5waiting = 0;   pipe6waiting = 0;
-            pipe7waiting = 0;   pipeFMaxwaiting = 0;
+            pipe1waiting = 0; pipe2waiting = 0; pipe3waiting = 0; pipe4waiting = 0;
+            pipe5waiting = 0; pipe6waiting = 0; pipe7waiting = 0; pipeFMaxwaiting = 0;
             
-            //Hold the valid for a cycle
+            //Set it to low after a single Cycle, as the data only enters 
+            //When Previous is done TODO: Check cascading 
             tick(1);
             valid_in = 0;
 
@@ -204,10 +157,7 @@ module tb_pipelinedCircularShifter;
                 tick(1);
 
                 if (valid_out1) begin
-                    //logic [MAXZ-1:0] expected;
                     pipe1waiting = 1'b1;
-                    //expected = rot_right(in_data, int'(shift_val));
-
                     total_tests++;
                     if (out_data1 !== expected) begin
                         $display("%0t ERROR: Rotates_Per_Cycle=%d in=%b shift=%0d out=%b expected=%b",
@@ -227,7 +177,7 @@ module tb_pipelinedCircularShifter;
                 end
 
                 if (valid_out3) begin
-                     pipe3waiting = 1'b1;
+                    pipe3waiting = 1'b1;
                     total_tests++;
                     if (out_data3 !== expected) begin
                         $display("%0t ERROR: Rotates_Per_Cycle=%d in=%b shift=%0d out=%b expected=%b",
@@ -248,10 +198,7 @@ module tb_pipelinedCircularShifter;
                 end
 
                 if (valid_out5) begin
-                    logic [MAXZ-1:0] expected;
                     pipe5waiting = 1'b1;
-                    expected = rot_right(in_data, int'(shift_val));
-
                     total_tests++;
                     if (out_data5 !== expected) begin
                         $display("%0t ERROR: Rotates_Per_Cycle=%d in=%b shift=%0d out=%b expected=%b",
@@ -261,10 +208,7 @@ module tb_pipelinedCircularShifter;
                 end
 
                 if (valid_out6) begin
-                    logic [MAXZ-1:0] expected;
                     pipe6waiting = 1'b1;
-                    expected = rot_right(in_data, int'(shift_val));
-
                     total_tests++;
                     if (out_data6 !== expected) begin
                         $display("%0t ERROR: Rotates_Per_Cycle=%d in=%b shift=%0d out=%b expected=%b",
@@ -274,10 +218,7 @@ module tb_pipelinedCircularShifter;
                 end
 
                 if (valid_out7) begin
-                    logic [MAXZ-1:0] expected;
                     pipe7waiting = 1'b1;
-                    expected = rot_right(in_data, int'(shift_val));
-
                     total_tests++;
                     if (out_data7 !== expected) begin
                         $display("%0t ERROR: Rotates_Per_Cycle=%d in=%b shift=%0d out=%b expected=%b",

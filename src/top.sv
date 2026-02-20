@@ -24,91 +24,81 @@
 //      Default is 1. 
 //  
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-module QCLDPCEncoder #(
+module QCLDPCEncoderController #(
     parameter int NUM_OF_SUPPORTED_Z                =               3,
     parameter int HIGHEST_SUPPORTED_Z_VAL           =               81,
     parameter int NUM_INFO_BLKS_PER_CODE_BLK        =               20,
     parameter int NUM_PARITY_BLKS_PER_CODE_BLK      =               4,         
     parameter int ROM_TYPE                          =               1,          
     parameter int Z_VALUE_ARRAY[NUM_OF_SUPPORTED_Z] =               {27, 54, 81},
-    parameter int LEVEL_OF_PARALLELIZATION          =               1
-);
-    //Creating Alias for readability
-    localparam int MaxZ        = HIGHEST_SUPPORTED_Z_VAL;
-    localparam int NumPBlks    = NUM_PARITY_BLKS_PER_CODE_BLK;
-    localparam int IBlksNum    = NUM_INFO_BLKS_PER_CODE_BLK;
-    localparam int ZsN         = NUM_OF_SUPPORTED_Z; 
-    localparam int PLvl        = LEVEL_OF_PARALLELIZATION;
-
+    parameter int LEVEL_OF_PARALLELIZATION          =               1,
+    // -------------------------------------------------------------------------    
+    // LocalParam Defines, a Lot of them are alias for readability
+    // -------------------------------------------------------------------------    
+    //Creating Alias for readability and to shorten code lines, Originally this
+    //Was outside of the top decl but verilator strictly enforces
+    //All ports being inside so I had to move it back up here, 
+    // #TODO: CLEAN IT UP
+    localparam int MaxZ        = HIGHEST_SUPPORTED_Z_VAL,
+    localparam int NumPBlks    = NUM_PARITY_BLKS_PER_CODE_BLK,
+    localparam int IBlksNum    = NUM_INFO_BLKS_PER_CODE_BLK,
+    localparam int ZsN         = NUM_OF_SUPPORTED_Z,
+    localparam int PLvl        = LEVEL_OF_PARALLELIZATION,
     //ROM Related Local Params
-    localparam int PmRomDepth = (IBlksNum+NumPBlks) * NumPBlks * ZsN;
-    localparam int PmRomWidth = $clog2(MaxZ);
+    localparam int PmRomDepth = (IBlksNum+NumPBlks) * NumPBlks * ZsN,
+    localparam int PmRomWidth = $clog2(MaxZ),
     localparam int PmRomAddrW = $clog2(PmRomDepth)
-
-    // :( input and output defines outside of ( ) because they depend on the Localparam names 
-    input  logic CLK;
-    input  logic rst_n;
-    input  logic en_enc;
-
+)(
+    input logic CLK,
+    input logic rst_n,
+    input logic en_enc,  
     //TODO assert   assert property (@(posedge clk) $onehot(req_Z)) 
-    input  logic [ZsN-1:0]                          req_z;   //Unused in ROM_Type 0 Highest Value corresponds to 
-    input  logic [(MaxZ*PLvl)-1:0]                  data_in;  
-    output logic [(MaxZ*(NumPBlks+IBlksNum))-1:0]   p_data_out;
+    input logic [ZsN-1:0] req_z,  //Unused in ROM_Type 0 Highest Value corresponds to 
+    input  logic [(MaxZ*PLvl)-1:0]                  data_in,
+    output logic [(MaxZ*(NumPBlks+IBlksNum))-1:0]   p_data_out
+);
     // -------------------------------------------------------------------------    
-    // End of Module input declaration
+    // Declaration of Internal Module Signals
     // -------------------------------------------------------------------------    
-
     //Don't need to initialize because it gets written to anyway and it doesn't matter what start values are
     logic [(MaxZ*(IBlksNum+NumPBlks))-1:0] data_buffer;
-    logic [MaxZ-1:0] parity_blk[(NumPBlks*MaxZ)-1:0];    
     
+    logic [MaxZ-1:0] parity_blk[(NumPBlks*MaxZ)-1:0];    
+
     //Define storage registers for the intermediate values used by accumulators one for each generated Parity Block
     reg [MaxZ-1:0] accum_regs [0:$clog2(NumPBlks)-1]; 
-
-    wire shift_addr  [PmRomAddrW-1:0];   
-    wire [PmRomWidth-1:0] shift_values [0:(NumPBlks*PLvl)-1];
+    
+    logic shift_addr  [PmRomAddrW-1:0];   
+    logic [PmRomWidth-1:0] shift_values [0:(NumPBlks*PLvl)-1];
 
     //output of the rotate functions
-    logic [MaxZ-1:0] rotated_data [0:$clog2(NumPBlks*)-1];
+    logic [MaxZ-1:0] rotated_data [0:$clog2(NumPBlks*PLvl)-1];
 
     logic [$clog2(IBlksNum/PLvl)-1:0] c_cnt;
 
-
     // -------------------------------------------------------------------------    
     // Generate ROM
-    // TODO: Add more asserts to throw errors when the values given
-    // to these generate functions are proper.
+    // TODO: Add more asserts to throw errors when the value provide is invalid.
     // -------------------------------------------------------------------------    
     generate
-        case (`ROM_TYPE)
+        case (ROM_TYPE)
             0: begin : Single_LUT_ROM
                 ProtoMatrixRom_SingleLUT #(   
-                                .THE_Z(MaxZ), 
-                                .NUM_PARITY_BLKS(NumPBlks),
-                                .WIDTH(PmRomWidth), 
-                                .DEPTH(PmRomDepth), 
-                                .ADDRW(PmRomAddrW)
-                                .P_LVL(PLvl)
-                            )  
+                        .THE_Z(MaxZ), .NUM_PARITY_BLKS(NumPBlks), .WIDTH(PmRomWidth), 
+                        .DEPTH(PmRomDepth), .ADDRW(PmRomAddrW), .P_LVL(PLvl)
+                    )  
                     GenROM (
-                            .addr(shift_addr),
-                            .data_out(shift_values)
+                        .addr(shift_addr),  .data_out(shift_values)
                     );
             end
 
             1: begin : Multi_LUT_ROM 
                 ProtoMatrixRom_MultiLUT #(
-                                .NUM_Z(ZsN),
-                                .Z_VALUES(Z_VALUE_ARRAY),
-                                .NUM_PARITY_BLKS(NumPBlks),
-                                .DEPTH(PmRomDepth),
-                                .WIDTH(PmRomWidth),
-                                .ADDRW(PmRomAddrW),
-                                .P_LVL(PLvl)
-                            )
+                        .NUM_Z(ZsN), .Z_VALUES(Z_VALUE_ARRAY), .NUM_PARITY_BLKS(NumPBlks),
+                        .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW), .P_LVL(PLvl)
+                    )
                     GenROM (
-                            .addr(shift_addr),
-                            .data_out(shift_values)
+                        .addr(shift_addr),.data_out(shift_values)
                     ); 
             end
             
@@ -116,17 +106,11 @@ module QCLDPCEncoder #(
             //Same for .data_out since multidimentional 
             2: begin : BRAM_ROM
                 ProtoMatrixRom_BRAM #(
-                                .NUM_Z(ZsN),
-                                .NUM_PARITY_BLKS(NumPBlks),
-                                .Z_VALUES(Z_VALUE_ARRAY),
-                                .DEPTH(PmRomDepth),
-                                .WIDTH(PmRomWidth),
-                                .ADDRW(PmRomAddrW),
-                                .P_LVL(PLvl)
-                                )
+                        .NUM_Z(ZsN), .NUM_PARITY_BLKS(NumPBlks), .Z_VALUES(Z_VALUE_ARRAY),
+                        .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW), .P_LVL(PLvl)
+                    )
                     GenRom (
-                            .addr(shift_addr),
-                            .data_out(shift_values)
+                        .addr(shift_addr),.data_out(shift_values)
                     );
             end 
 
@@ -140,8 +124,8 @@ module QCLDPCEncoder #(
     // Stage 0: Input register / Zero padding if input is not width of Max Z
     //      TODO: Must add support for P_Level
     // -------------------------------------------------------------------------    
-    always_ff @posedge CLK) begin
-        if(!rst)
+    always_ff @(posedge CLK) begin
+        if(!rst_n)
             info_reg <= '0;
         else begin
             // NOTE: Note to the user, I decided not to go about using hours of my life working on 
@@ -170,7 +154,6 @@ module QCLDPCEncoder #(
     // -------------------------------------------------------------------------    
 
 
-
     //THE REQUESTED ADDRESS FOR THE MEMORY NEEDS TO BE #of Z * depth / num_z -1
     // i.e. 81 is 2 in the array, so starting address is 288/3 = 96, *2 = 192 - 1 = 191
     // * 
@@ -183,5 +166,4 @@ module QCLDPCEncoder #(
 
     end
     
-
 endmodule
