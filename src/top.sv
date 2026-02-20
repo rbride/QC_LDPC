@@ -52,11 +52,16 @@ module QCLDPCEncoderController #(
 )(
     input logic CLK,
     input logic rst_n,
-    input logic en_enc,  
+    //Handshake Signals
+    input logic in_valid,
+    input logic in_last,
+    output logic in_ready,
+
     //TODO assert   assert property (@(posedge clk) $onehot(req_Z)) 
     input logic [ZsN-1:0] req_z,  //Unused in ROM_Type 0 Highest Value corresponds to 
     input  logic [(MaxZ*PLvl)-1:0]                  i_data,
     output logic [(MaxZ*(NumPBlks+IBlksNum))-1:0]   p_data_out
+    
 );
     // -------------------------------------------------------------------------    
     // Declaration of Internal Module Signals
@@ -64,7 +69,6 @@ module QCLDPCEncoderController #(
     reg [MaxZ-1:0] i_data_processed;
     //Tbh could be wire Top bit stays for the purpose of the valid out
     logic [NumPBlks*PLvl-1:0][MaxZ:0] rotator_o;
-
 
     logic [MaxZ-1:0] parity_blk[(NumPBlks*MaxZ)-1:0];    
 
@@ -90,6 +94,8 @@ module QCLDPCEncoderController #(
     //The highest bit its one flag for a quick check on the cycle after the computation is done
     //So don't -1
     logic [$clog2(IBlksNum):0]    pipeline_cnt;
+
+    typedef enum  logic {IDLE, LOAD, GEN_PARITY, PUSH_DATA} state_t;
 
     // -------------------------------------------------------------------------    
     // Generate ROM
@@ -136,11 +142,33 @@ module QCLDPCEncoderController #(
     endgenerate
 
     // -------------------------------------------------------------------------    
+    // Generate the requested pipelined Circular Shifter for. 
+    // TODO: Add support for pointer based one for Z>=384
+    // -------------------------------------------------------------------------    
+    genvar nori; 
+    generate
+        for(nori=0; nori<NumPBlks*PLvl; nori++) begin
+            pipelinedCircularShifter #(
+                .MAXZ(MaxZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE)
+            )
+            circ_shftr_inst (
+                .CLK(CLK), .rst_n(rst_n), .valid_in(valid_flag_pipe[1]), 
+                .in_data(i_data_processed), .shift_val(shift_values[nori]),
+                .out_data(rotator_o[nori][MaxZ-1:0]), .valid_out(rotator_o[nori][MaxZ])
+            );
+        end
+    endgenerate
+
+
+
+    // -------------------------------------------------------------------------    
     // Stage 0: Input register / Zero padding if input is not width of Max Z
     // -------------------------------------------------------------------------    
     always_ff @(posedge CLK) begin
         if(!rst_n)
             i_data_processed <= '0;
+            shift_addr <= '0;
+
         else begin
             // NOTE: Note to the user, I decided not to go about using hours of my life working on 
             // complex bunch of code to manage the input of this  one hot case if you change the number
@@ -172,20 +200,7 @@ module QCLDPCEncoderController #(
     // -------------------------------------------------------------------------    
     // Stage 1-N, Feed the data into the Circular Rotation Pipeline
     // -------------------------------------------------------------------------    
-    genvar nori; 
-    generate
-        for(nori=0; nori<NumPBlks*PLvl; nori++) begin
-            pipelinedCircularShifter #(
-                .MAXZ(MaxZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE)
-            )
-            circ_shftr_inst (
-                .CLK(CLK), .rst_n(rst_n), .valid_in(valid_flag_pipe[1]), 
-                .in_data(i_data_processed), .shift_val(shift_values[]),
-                .out_data(rotator_o[nori][MaxZ-1:0]), .valid_out(rotator_o[nori][MaxZ])
-            );
-        end
-    endgenerate
-
+    
 
     //Some old note that was still here, I'll leave it for now 
     //THE REQUESTED ADDRESS FOR THE MEMORY NEEDS TO BE #of Z * depth / num_z -1
@@ -200,13 +215,11 @@ module QCLDPCEncoderController #(
             valid_flag_pipe <= '0;
             pipeline_cnt    <= '0;
         end else begin
-            valid_flag_pipe[0] <= en_enc;
+            valid_flag_pipe[0] <= in_valid;
             for(int i = 1; i <= numPipelineSteps; i++) begin
                 valid_flag_pipe[i] <= valid_flag_pipe[i-1];
             end
         end
-
-
 
 
     end
