@@ -140,3 +140,15 @@ generate
     assign stage_out[i] = substep_wires[NUM_SUBSTEPS];
   end
 endgenerate
+
+input  logic         in_valid;
+output logic         in_ready;
+input  logic         in_last;   // marks final systematic block
+
+//In_last would indicate the end of a codeword and trigger the pipeline to do the actual parity calculation
+
+    //Some old note that was still here, I'll leave it for now 
+    //THE REQUESTED ADDRESS FOR THE MEMORY NEEDS TO BE #of Z * depth / num_z -1
+    // i.e. 81 is 2 in the array, so starting address is 288/3 = 96, *2 = 192 - 1 = 191
+
+acc_input = rot_out[81-shift-54 +: 54];
