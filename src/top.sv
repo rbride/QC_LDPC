@@ -1,4 +1,6 @@
 `timescale 1ns / 1ps
+import qcldpcPkg::*;
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Author: Ryan Bride 
 // Create Date: 09/09/2025
@@ -15,7 +17,7 @@
 //  ROM_TYPE:  Chooses the Selected ROM Structure used to store Protoype Matrix/Shift Values. 
 //      0 = Single-Rate LUT Based Rom (i.e only one speed and one Proto Matrix defined for that speed)   
 //      1 = Multi-RATE LUT, Simple LUT Based rom that supports 3 seperate Z's
-//      2 = BRAM Based ROM Supporting 3 Seperate Z's  
+//      2 = BRAM Based ROM Supporting 3 Seperate Z's, shouldn't be used for this version of the QCLDPC
 //  
 //  LEVEL_OF_PARALLELIZATION: Indicates the number of Column calculations done per step. 
 //      if the initial base matrix given is 20 columns of m and 4 rows, it will take 20 steps to do with Par 1
@@ -27,91 +29,81 @@
 //  | 27, 54, 81 | 28, 56, 112 | 24, 48, 96 | 48, 72, 96 |
 //  All of these have some sort of metric where atleast 1 of teh smaller numbers divides evenly into one of the higher
 //  values, for sake of keeping the actual design being minimized I recommend you do the same. Further it is recommended
-//  that for the smallest z segment of this circuit you utilize a highest value of a z that has a Clog2(MaxZ) of 7 or less
+//  that for the smallest z segment of this circuit you utilize a highest value of a z that has a Clog2(MAXZ) of 7 or less
 //  And then utilize to larger values with a version of this circuit such as 192 and like 162 at a lower FMAX For middle
 //  Size values, and ultimately the to be done pointer implementation that utilizes the Bram Memory for Z=352 for
 //  Large data outputs You can achieve higher FMAX by using a subset like 24, 48, and 96 or 28, 56, 112, 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 module QCLDPCEncoderController #(
-    parameter int NUM_OF_SUPPORTED_Z                =               3,
-    parameter int HIGHEST_SUPPORTED_Z_VAL           =               81,
+    parameter int NUM_SUP_Z                         =               3,
+    parameter int MAXZ                              =               81,
     parameter int NUM_INFO_BLKS_PER_CODE_BLK        =               20,
     parameter int NUM_PARITY_BLKS_PER_CODE_BLK      =               4,         
     parameter int ROM_TYPE                          =               1,          
     parameter int Z_VALUE_ARRAY[NUM_OF_SUPPORTED_Z] =               {27, 54, 81},
-    parameter int LEVEL_OF_PARALLELIZATION          =               1,
     parameter int ROTATES_PER_CYCLE                 =               1,      
     parameter int NUM_ACCUM_PIPE_SPLITS             =               2,      //Starting with 2 
     // -------------------------------------------------------------------------    
     // LocalParam Defines, a Lot of them are alias for readability
     // -------------------------------------------------------------------------    
-    localparam int MaxZ        = HIGHEST_SUPPORTED_Z_VAL,
     localparam int NumPBlks    = NUM_PARITY_BLKS_PER_CODE_BLK,
     localparam int IBlksNum    = NUM_INFO_BLKS_PER_CODE_BLK,
-    localparam int ZsN         = NUM_OF_SUPPORTED_Z,
-    localparam int PLvl        = LEVEL_OF_PARALLELIZATION,
     //ROM Related Local Params
-    localparam int PmRomDepth = (IBlksNum+NumPBlks) * NumPBlks * ZsN,
-    localparam int PmRomWidth = $clog2(MaxZ),
+    localparam int PmRomDepth = (IBlksNum+NumPBlks) * NumPBlks * NUM_SUP_Z,
+    localparam int PmRomWidth = $clog2(MAXZ),
     localparam int PmRomAddrW = $clog2(PmRomDepth),
 
     localparam int PipelineCntrDepth = $clog2(IBlksNum)
 )(
-    input logic CLK, rst_n, in_valid, in_last, //At the moment in_last is unused, but included none-the less 
+    input logic CLK, rst_n, in_valid, in_last, //In_valid and in_last for handshake signals 
     output logic in_ready,
 
-    //#TODO Cascade this through so the Z can change block to block
-    input logic [ZsN-1:0] req_z,  //Unused in ROM_Type 0 Highest Value corresponds to  
-    input  logic [(MaxZ*PLvl)-1:0]                  i_data,
-    output logic [(MaxZ*(NumPBlks+IBlksNum))-1:0]   p_data_out
+    input logic [NUM_SUP_Z-1:0] req_z,  //Unused in ROM_Type 0 Highest Value corresponds to  
+    input  logic [MAXZ-1:0]                         i_data,   
+    output logic [(MAXZ*(NumPBlks+IBlksNum))-1:0]   p_data_out
 );
     // -------------------------------------------------------------------------
-    // TODO: Currently I do not have logic to handle the case that is a variety of legnths and stuff
-    //  As it stands there is mostly just a hard limit on it being required to use 81, 54, and 27
-    //  add combo logic to support this, like do divisions to see if one is evenly divided into
-    //  fmax and compute it, also use a function to compute these inputs and stuff and recommend
-    //  TODO TODO TODO TODO, recommend to use primarily factorized inputs for the includes
-    //  Below is placeholder stuff for it
+    // 
     // -------------------------------------------------------------------------
     localparam int NumNonFactorSupportedLens = 1;
+
 
 
     // -------------------------------------------------------------------------    
     // Declaration of Internal Module Signals
     // -------------------------------------------------------------------------    
-    reg [MaxZ-1:0] i_data_processed;
-    logic [MaxZ:0] rotator_o [NumPBlks*PLvl-1:0];
+    pipeline_pkt_t 
+    logic [MAXZ:0] rotator_o [NumPBlks-1:0];   
     //2 accumulator registers for each Parity block for Register Ping ponging 
-    reg [MaxZ:0] accum_regs [0:NumPBlks*PLvl-1][0:NUM_ACCUM_PIPE_SPLITS-1][0:1]; 
-
-    logic [MaxZ-1:0] parity_blk[(NumPBlks*MaxZ)-1:0];    
+    logic [MAXZ:0] accum_regs [0:NumPBlks-1][0:NUM_ACCUM_PIPE_SPLITS-1][0:1]; 
+    logic [MAXZ-1:0] parity_blk[(NumPBlks*MAXZ)-1:0];    
 
     logic [PmRomAddrW-1:0] shift_addr;
-    logic [PmRomWidth-1:0] shift_values [0:(NumPBlks*PLvl)-1];
+    logic [PmRomWidth-1:0] shift_values [0:(NumPBlks)-1]; 
+
 
     //Calculate # of stages of the Shifter Pipeline, to determine the needed Valid depth
-    localparam int numPipelineSteps = ($clog2(MaxZ) % ROTATES_PER_CYCLE  != 0) ?
-                                      (($clog2(MaxZ) / ROTATES_PER_CYCLE) +1 )  :
-                                      ($clog2(MaxZ) / ROTATES_PER_CYCLE);
+    localparam int numPipelineSteps = ($clog2(MAXZ) % ROTATES_PER_CYCLE  != 0) ?
+                                      (($clog2(MAXZ) / ROTATES_PER_CYCLE) +1 )  :
+                                      ($clog2(MAXZ) / ROTATES_PER_CYCLE);
 
     logic valid_flag_pipe; 
     //not -1 because the highest bit is used to select the Accumulation Register Bank
     logic [$clog2(IBlksNum):0]    pipeline_cnt;
     
-
     // -------------------------------------------------------------------------    
     // Generate ROM
     //      The BRAM Rom is there for the currently not started Pointer Rotation
-    //      Morph of this codebase for Z's of like 256 and 352. 
-    //      The Single LUT Rom is there for either single Z designs, and 
-    //      the under development addition of LUT to the Post Rotation Segment
+    //      Morph of this codebase for Z's of like 256 and 352. in the 3DPP Spec
+    //      The Single LUT Rom is there for either single Z designs like a 
+    //      Second rotator for the IEEE Spec version
     // -------------------------------------------------------------------------    
     generate
         case (ROM_TYPE)
             0: begin : Single_LUT_ROM
                 ProtoMatrixRom_SingleLUT #(   
-                        .THE_Z(MaxZ), .NUM_PARITY_BLKS(NumPBlks), .WIDTH(PmRomWidth), 
-                        .DEPTH(PmRomDepth), .ADDRW(PmRomAddrW), .P_LVL(PLvl)
+                        .THE_Z(MAXZ), .NUM_PARITY_BLKS(NumPBlks), .WIDTH(PmRomWidth), 
+                        .DEPTH(PmRomDepth), .ADDRW(PmRomAddrW)
                     )  
                     GenROM (
                         .addr(shift_addr),  .data_out(shift_values)
@@ -120,25 +112,24 @@ module QCLDPCEncoderController #(
 
             1: begin : Multi_LUT_ROM 
                 ProtoMatrixRom_MultiLUT #(
-                        .NUM_Z(ZsN), .Z_VALUES(Z_VALUE_ARRAY), .NUM_PARITY_BLKS(NumPBlks),
-                        .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW), .P_LVL(PLvl)
+                        .NUM_Z(NUM_SUP_Z), .Z_VALUES(Z_VALUE_ARRAY), .NUM_PARITY_BLKS(NumPBlks),
+                        .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW)
                     )
                     GenROM (
                         .addr(shift_addr),.data_out(shift_values)
                     ); 
             end
             
-            //TODO Possible error could be improper port defintion of Z_values but whatever
-            //Same for .data_out since multidimentional 
-            2: begin : BRAM_ROM
-                ProtoMatrixRom_BRAM #(
-                        .NUM_Z(ZsN), .NUM_PARITY_BLKS(NumPBlks), .Z_VALUES(Z_VALUE_ARRAY),
-                        .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW), .P_LVL(PLvl)
-                    )
-                    GenRom (
-                        .addr(shift_addr),.data_out(shift_values)
-                    );
-            end 
+            // //Same for .data_out since multidimentional 
+            // 2: begin : BRAM_ROM
+            //     ProtoMatrixRom_BRAM #(
+            //             .NUM_Z(NUM_SUP_Z), .NUM_PARITY_BLKS(NumPBlks), .Z_VALUES(Z_VALUE_ARRAY),
+            //             .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW)
+            //         )
+            //         GenRom (
+            //             .CLK(CLK), .addr(shift_addr),.data_out(shift_values)
+            //         );
+            // end 
 
             default: begin : assert_invalid_cfg
                 $fatal(1, "Invalid ROM Configuration Selected - Aborting");
@@ -146,20 +137,21 @@ module QCLDPCEncoderController #(
         endcase 
     endgenerate
 
+
     // -------------------------------------------------------------------------    
-    // Generate the requested pipelined Circular Shifter for. 
-    // TODO: Add support for pointer based one for Z>=384
+    // Generate the requested pipelined Circular Shifter for MAXZ and any others
+    // Requested for the Z's given
     // -------------------------------------------------------------------------    
     genvar nori; 
     generate
-        for(nori=0; nori<NumPBlks*PLvl; nori++) begin
+        for(nori=0; nori<NumPBlks; nori++) begin
             pipelinedCircularShifter #(
-                .MAXZ(MaxZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE)
+                .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE)
             )
             circ_shftr_inst (
                 .CLK(CLK), .rst_n(rst_n), .valid_in(valid_flag_pipe), 
                 .in_data(i_data_processed), .shift_val(shift_values[nori]),
-                .out_data(rotator_o[nori][MaxZ-1:0]), .valid_out(rotator_o[nori][MaxZ])
+                .out_data(rotator_o[nori][MAXZ-1:0]), .valid_out(rotator_o[nori][MAXZ])
             );
         end
     endgenerate
@@ -186,13 +178,12 @@ module QCLDPCEncoderController #(
                     shift_addr <= '0;   //************ IT SHOULD BE FINE AN INFERED COMBINATIONAL LINE WITH THE COMPILER 
                 end
                 3'b010 : begin 
-                    //54 does not work #fixme 
-                    i_data_processed <= {{ (MaxZ-Z_VALUE_ARRAY[1]){1'b0} }, i_data[(Z_VALUE_ARRAY[1]-1):0] };
-                    shift_addr <= PmRomAddrW'(PmRomDepth/ZsN)-1;
+                    i_data_processed <= {{ (MAXZ-Z_VALUE_ARRAY[1]){1'b0} }, i_data[(Z_VALUE_ARRAY[1]-1):0] };
+                    shift_addr <= PmRomAddrW'(PmRomDepth/NUM_SUP_Z)-1;
                 end
                 3'b100 : begin 
                     i_data_processed <= i_data;
-                    shift_addr <= PmRomAddrW'(PmRomDepth/ZsN*2)-1;
+                    shift_addr <= PmRomAddrW'(PmRomDepth/NUM_SUP_Z*2)-1;
                 end
                 default : begin 
                     i_data_processed <= '0;
@@ -211,7 +202,6 @@ module QCLDPCEncoderController #(
     // Process 2: feed Accumulators with output of Pipelined Rotators, and 
     //            Manage accumulators and block count, then when frame is complete
     //            output to Final step of generating final parity.  
-    //            TODO: Add support for the midsize Z
     // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
     //-------------------------------------------------------------------------
     // Count the pipeline value, & flip the top bit to select the right accum bank
@@ -221,7 +211,7 @@ module QCLDPCEncoderController #(
             pipeline_cnt <= '0;
         end else begin
             //Decided to use the middle accumulator to theoretically reduce fanout for all rotators 
-            if((rotator_o[(NumPBlks*PLvl/2)][MaxZ]) == 1'b1) begin
+            if((rotator_o[(NumPBlks/2)][MAXZ]) == 1'b1) begin
                 pipeline_cnt <= (pipeline_cnt[$clog2(IBlksNum)-1:0] == PipelineCntrDepth'(IBlksNum-1)) ?  
                                 { ~pipeline_cnt[$clog2(IBlksNum)], {($clog2(IBlksNum)){1'b0}} }  :
                                 pipeline_cnt + 1;
@@ -233,44 +223,50 @@ module QCLDPCEncoderController #(
     // Generate the logic to send output of each rotator to the accums regs
     // -------------------------------------------------------------------------    
     genvar jj; 
-    //reg [MaxZ:0] accum_regs [0:$clog2(NumPBlks*PLvl)-1][NUM_ACCUM_PIPE_SPLITS][0:1]; 
+    //reg [MAXZ:0] accum_regs [0:$clog2(NumPBlks)-1][NUM_ACCUM_PIPE_SPLITS][0:1]; 
     generate 
-        for(jj=0; jj<NumPBlks*PLvl; jj++) begin
+        for(jj=0; jj<NumPBlks; jj++) begin
             logic last_in_frame;
             
             always_ff @(posedge CLK) begin
                 if(!rst_n) begin
                     last_in_frame   <= '0;   
-                    accum_regs      <= '0;
+                    for (int i=0; i<=$clog2(NumPBlks); i++) begin
+                        for (int j=0; j<=NUM_ACCUM_PIPE_SPLITS; j++) begin
+                            for (int k=0; k<=1; k++) begin
+                                accum_regs[i][j][k] <= '0;
+                            end
+                        end
+                    end
                 end else begin
                     //Throw the last indicate 
                     if(!(last_in_frame && pipeline_cnt[$clog2(IBlksNum)])) begin
                         last_in_frame <= ~last_in_frame;
-                        accum_regs[jj][1][last_in_frame][MaxZ] <= 1; 
+                        accum_regs[jj][1][last_in_frame][MAXZ] <= 1; 
                     end
                     
                     //If local Rotator out is giving a valid, then read it into stuff
-                    if(rotator_o[jj][MaxZ]) begin
+                    if(rotator_o[jj][MAXZ]) begin
                         unique case (req_z)
                             //The lowest bit corresponds to a selection of the first item in the array
                             3'b001 : begin 
-                                accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]][MaxZ-1:0] 
-                                    <= { {(MaxZ-Z_VALUE_ARRAY[0]){1'b0}}, rotator_o[jj][(Z_VALUE_ARRAY[0]-1):0] };
-                                accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]][MaxZ] <= 0; 
+                                accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]][MAXZ-1:0] 
+                                    <= { {(MAXZ-Z_VALUE_ARRAY[0]){1'b0}}, rotator_o[jj][(Z_VALUE_ARRAY[0]-1):0] };
+                                accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]][MAXZ] <= 0; 
                             end
                             
                             3'b010 : begin 
                                 accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]] 
-                                    <= { (MaxZ+1){1'b0} }; //this one is broken #FIXME needs the LUT map and stuff     
-                                accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]][MaxZ] <= 0;         
+                                    <= { (MAXZ+1){1'b0} }; //this one is broken #FIXME needs the LUT map and stuff     
+                                accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]][MAXZ] <= 0;         
                             end
                             3'b100 : begin 
-                                accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]][MaxZ-1:0] <= rotator_o[jj][MaxZ-1:0];
-                                accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]][MaxZ] <= 0; 
+                                accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]][MAXZ-1:0] <= rotator_o[jj][MAXZ-1:0];
+                                accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]][MAXZ] <= 0; 
                             end
                             default : begin 
                                 accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]] <= '0;
-                                accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]][MaxZ] <= 0; 
+                                accum_regs[jj][0][pipeline_cnt[$clog2(IBlksNum)]][MAXZ] <= 0; 
                             end
                         endcase
                     end
@@ -280,8 +276,9 @@ module QCLDPCEncoderController #(
 
 
                     //CURRENTLY ASSUMING NO PIPELINE #TODO Take this into account for N=192
-                    accum_regs[jj][1][0][MaxZ-1:0] <= accum_regs[jj][0][0][MaxZ-1:0] ^ accum_regs[jj][0][0][MaxZ-1:0];
-                    accum_regs[jj][1][1][MaxZ-1:0] <= accum_regs[jj][0][1][MaxZ-1:0] ^ accum_regs[jj][0][1][MaxZ-1:0];
+                    accum_regs[jj][1][0][MAXZ-1:0] <= accum_regs[jj][0][0][MAXZ-1:0] ^ accum_regs[jj][0][0][MAXZ-1:0];
+                    accum_regs[jj][1][1][MAXZ-1:0] <= accum_regs[jj][0][1][MAXZ-1:0] ^ accum_regs[jj][0][1][MAXZ-1:0];
+                    
                 end
             end        
         end
