@@ -24,11 +24,9 @@ module ProtoMatrixRom_SingleLUT #(
     parameter int DEPTH = 96,   
     parameter int ADDRW = 7,    //Clog2(Depth)
     parameter int NUM_PARITY_BLKS = 4,
-    parameter int P_LVL = 1
 )(
     input wire logic [ADDRW-1:0] addr,
-    //output           [WIDTH-1:0] data_out [0:$clog2(NUM_PARITY_BLKS*P_LVL)-1]
-    output logic        [WIDTH-1:0] data_out [0:NUM_PARITY_BLKS*P_LVL-1]
+    output logic [WIDTH-1:0] data_out [0:NUM_PARITY_BLKS-1]
 ); 
     
     (* ram_style = "distributed" *) logic [WIDTH-1:0] memory [0:DEPTH-1];
@@ -67,9 +65,7 @@ module ProtoMatrixRom_SingleLUT #(
     // data_out[i+q] = memory[addr + (( i*(DEPTH/THE_Z) + q )-1)]; 
     always_comb begin
         for(int i=0; i<NUM_PARITY_BLKS; i++) begin
-            for(int q=0; q<P_LVL; q++) begin
-                data_out[i+q] = memory[addr+q +(i*(DEPTH/NUM_PARITY_BLKS)-1)];
-            end
+            data_out[i+q] = memory[addr+q +(i*(DEPTH/NUM_PARITY_BLKS)-1)];
         end
     end
 endmodule
@@ -84,12 +80,10 @@ module ProtoMatrixRom_MultiLUT #(
     parameter int WIDTH             =   7,
     parameter int ADDRW             =   9,
     parameter int NUM_PARITY_BLKS   =   4,
-    parameter int P_LVL             =   1
 
 )(
     input wire logic [ADDRW-1:0] addr,
-    //output           [WIDTH-1:0] data_out [0:$clog2(NUM_PARITY_BLKS*P_LVL)-1]
-    output logic          [WIDTH-1:0] data_out [0:NUM_PARITY_BLKS*P_LVL-1]
+    output logic [WIDTH-1:0] data_out [0:NUM_PARITY_BLKS-1]
 
 );
  
@@ -124,9 +118,7 @@ module ProtoMatrixRom_MultiLUT #(
     //Determine in the encoder logic send the address offset with the requested z don't handle it in memory 
     always_comb begin
         for(int i=0; i<NUM_PARITY_BLKS; i++) begin
-            for(int q=0; q<P_LVL; q++) begin
-                data_out[i+q] = memory[addr+q +(i*(DEPTH/NUM_PARITY_BLKS)-1)];
-            end
+            data_out[i+q] = memory[addr+q +(i*(DEPTH/NUM_PARITY_BLKS)-1)];
         end
     end
 endmodule
@@ -139,12 +131,10 @@ module ProtoMatrixRom_BRAM #(
     parameter int DEPTH             =   288,  
     parameter int WIDTH             =   7,
     parameter int ADDRW             =   9,
-    parameter int P_LVL             =   1
 )(
     input logic CLK, 
     input wire logic [ADDRW-1:0] addr,
-    //output           [WIDTH-1:0] data_out [0:$clog2(NUM_PARITY_BLKS)-1]
-    output logic         [WIDTH-1:0] data_out [0:NUM_PARITY_BLKS*P_LVL-1]
+    output logic [WIDTH-1:0] data_out [0:NUM_PARITY_BLKS-1]
 );
 
     (* ram_style = "block" *) reg [WIDTH-1:0] ram [0:DEPTH-1];
@@ -176,9 +166,7 @@ module ProtoMatrixRom_BRAM #(
     //Determine in the encoder logic send the address offset with the requested z don't handle it in memory 
     always @(posedge CLK) begin
         for(int i=0; i<NUM_PARITY_BLKS; i++) begin
-            for(int q=0; q<P_LVL; q++) begin
-                data_out[i+q] <= ram[addr+q +(i*(DEPTH/NUM_PARITY_BLKS)-1)];
-            end
+            data_out[i+q] <= ram[addr+q +(i*(DEPTH/NUM_PARITY_BLKS)-1)];
         end
     end
 
