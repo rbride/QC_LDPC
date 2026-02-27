@@ -18,28 +18,30 @@ import qcldpcPkg::*;
 //      1 = Multi-RATE LUT, Simple LUT Based rom that supports 3 seperate Z's
 //      2 = BRAM Based ROM Supporting 3 Seperate Z's, shouldn't be used for this version of the QCLDPC
 //
-//  TODO: ADD the fact that Req_Z is static to 
+//  TODO: ADD the fact that Req_Z is static to readme
+//  TODO  add to readme that Z_VALUE_ARRAY MUST Must be ordered Smallest to largest.
+//        already throwing an error for this in the Config Check 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 module QCLDPCEncoderController #(
-    parameter int NUM_SUP_Z                         =               3,
-    parameter int MAXZ                              =               81,
-    parameter int IBLKS_NUM                         =               20,
-    parameter int NUM_PBLKS                         =               4,         
-    parameter int ROM_TYPE                          =               1,          
-    parameter int Z_VALUE_ARRAY[0:NUM_OF_SUPPORTED_Z] =             {27, 54, 81},
-    parameter int ROTATES_PER_CYCLE                 =               1,      
-    parameter int NUM_ACCUM_PIPE_SPLITS             =               2,      //Starting with 2 
+    parameter int NUM_SUP_Z                              =      3,
+    parameter int MAXZ                                   =      81,
+    parameter int IBLKS_NUM                              =      20,
+    parameter int NUM_PBLKS                              =      4,         
+    parameter int ROM_TYPE                               =      1,          
+    parameter int Z_VALUE_ARRAY[0:NUM_OF_SUPPORTED_Z-1]  =      {27, 54, 81}, 
+    parameter int ROTATES_PER_CYCLE                      =      1,      
+    parameter int NUM_ACCUM_PIPE_SPLITS                  =      2,                //Increase for more Head Room
     
-    localparam int Gen_Dedicated_Rot          =  detr_nonfactor_z( MAXZ, Z_VALUE_ARRAY, NUM_SUP_Z );
-    localparam [NUM_SUP_Z-1:0] NonFactorZMask =  nonfactor_z_mask( MAXZ, Z_VALUE_ARRAY, NUM_SUP_Z );
+    localparam int Gen_Dedicated_Rot    =  detr_nonfactor_z( MAXZ, Z_VALUE_ARRAY, NUM_SUP_Z );
+    localparam int NonFactorZMask       =  nonfactor_z_mask( MAXZ, Z_VALUE_ARRAY, NUM_SUP_Z );
     
-    localparam int PmRomDepth = (IBLKS_NUM+NUM_PBLKS) * NUM_PBLKS * (NUM_SUP_Z - Gen_Dedicated_Rot),
-    localparam int PmRomWidth = $clog2(MAXZ),
-    localparam int PmRomAddrW = $clog2(PmRomDepth),
+    localparam int PmRomDepth           = (IBLKS_NUM+NUM_PBLKS) * NUM_PBLKS * (NUM_SUP_Z - Gen_Dedicated_Rot),
+    localparam int PmRomWidth           = $clog2(MAXZ),
+    localparam int PmRomAddrW           = $clog2(PmRomDepth),
     //Non Factor Z LUT Rom
-    localparam int NFZPmRomDepth = (IBLKS_NUM+NUM_PBLKS) * NUM_PBLKS * Gen_Dedicated_Rot;
-    localparam int NFZPmRomWidth = $clog2(Z_VALUE_ARRAY[(Gen_Dedicated_Rot == 0) ? 1 : Gen_Dedicated_Rot]);   //Default to 1 to avoid compile errors from verilator 
-    localparam int NFZPmRomAddrW = $clog2(NFZPmRomDepth)
+    localparam int NFZPmRomDepth        = (IBLKS_NUM+NUM_PBLKS) * NUM_PBLKS * Gen_Dedicated_Rot;
+    localparam int NFZPmRomWidth        = $clog2(Z_VALUE_ARRAY[(Gen_Dedicated_Rot == 0) ? 1 : Gen_Dedicated_Rot]);   //Default to 1 to avoid compile errors from verilator 
+    localparam int NFZPmRomAddrW        = $clog2(NFZPmRomDepth)
 )(
     input  logic CLK,   rst_n, in_valid,   in_last,   //In_valid and in_last for handshake signals 
     input  z_req_t req_z,           //STATIC, 3'b100 is 27, 3'b010 is 54, 3'b001 is 81, regardless of how many req_z, change it in Package
@@ -51,11 +53,17 @@ module QCLDPCEncoderController #(
     // Configuration check/error handling Etc
     //**************************************************************************************************************
     generate
-        if ( ROM_TYPE > 1 ) begin
+        if ( ROM_TYPE > 1 )
             initial $fatal(1, "Invalid ROM_TYPE=%0d \n  Supported Values are 1 and 0",ROM_TYPE);
-        end else if (Gen_Dedicated_Rot > 1) begin
+        if (Gen_Dedicated_Rot > 1) begin
             initial $fatal(1, "Invalid Configuration, design supports only 1 non factor of MaxZ, Z value \
                 your design has %0d non factor of MaxZ Z values requesting to be supported", Gen_Dedicated_Rot );
+        end
+        for (genvar i = 0; i < NUM_SUP_Z - 1; i++) begin : Z_ORDER_CHECK
+            if (Z_VALUE_ARRAY[i] >= Z_VALUE_ARRAY[i+1]) begin
+                initial $fatal(1, "Z_VALUE_ARRAY must be ordered least to greatest. \
+                    Z_VALUE_ARRAY[%0d]=%0d >= Z_VALUE_ARRAY[%0d]=%0d", i, Z_VALUE_ARRAY[i], i+1, Z_VALUE_ARRAY[i+1]);
+            end
         end
     endgenerate
     property req_z_onehot;
@@ -66,29 +74,24 @@ module QCLDPCEncoderController #(
         else $fatal(1, "req_z not one-hot: %0b", req_z);
     //**************************************************************************************************************
     //**************************************************************************************************************
-    
     // -------------------------------------------------------------------------    
     // Declaration of Internal Module Signals
     // -------------------------------------------------------------------------    
-    pipeline_pkt_t pkt_in_processed;              pipeline_pkt_t pkt_in_processed_NFZ;
     pipeline_pkt_t pkt_per_lane [0:NUM_PBLKS-1];  pipeline_pkt_t pkt_per_lane_NFZ [0:NUM_PBLKS-1];
+    logic [PmRomAddrW-1:0] rom_offsets [0:NUM_SUP_Z-1];   //Used to generate constants in a generate function for ram offsets  
 
     wire  [MAXZ-1:0] i_data_proc [0:NUM_SUP_Z-1];
-    pipeline_pkt_t rot_pkt_o_MaxZ   [0:NUM_PBLKS-1];  //For 81 and 27       
-    pipeline_pkt_t rot_pkt_o_NFZ    [0:NUM_PBLKS-1];    
+    pipeline_pkt_t rot_pkt_o_MaxZ   [0:NUM_PBLKS-1];  pipeline_pkt_t rot_pkt_o_NFZ    [0:NUM_PBLKS-1];    
 
+    logic [PmRomAddrW-1:0]     shift_rom_addr;      logic [PmRomWidth-1:0]     shift_rom_out     [0:NUM_PBLKS-1]; 
+    logic [NFZPmRomAddrW-1:0]  shift_rom_addr_NFZ;  logic [NFZPmRomWidth-1:0]  shift_rom_out_NFZ [0:NUM_PBLKS-1]; 
+    
     logic [MAXZ:0] rotator_o [NUM_PBLKS-1:0];   
     //2 accumulator registers for each Parity block for Register Ping ponging 
     logic [MAXZ:0] accum_regs [0:NUM_PBLKS-1][0:NUM_ACCUM_PIPE_SPLITS-1][0:1]; 
     logic [MAXZ-1:0] parity_blk[(NUM_PBLKS*MAXZ)-1:0];    
-
-    logic [PmRomAddrW-1:0]     shift_addr;      logic [PmRomWidth-1:0]     shift_values     [0:NUM_PBLKS-1]; 
-    logic [NFZPmRomAddrW-1:0]  shift_addr_NFZ;  logic [NFZPmRomWidth-1:0]  shift_values_NFZ [0:NUM_PBLKS-1]; 
-
-    //Calculate # of stages of the Shifter Pipeline, to determine the needed Valid depth
-    localparam int numPipelineSteps = ($clog2(MAXZ) % ROTATES_PER_CYCLE  != 0) ?
-                                      (($clog2(MAXZ) / ROTATES_PER_CYCLE) +1 )  :
-                                      ($clog2(MAXZ) / ROTATES_PER_CYCLE);
+    
+    logic [$clog(IBLKS_NUM)-1:0] colm_cnt; 
 
     //==========================================================================    
     // Generate ROM
@@ -103,14 +106,14 @@ module QCLDPCEncoderController #(
                         .THE_Z(MAXZ), .NUM_PARITY_BLKS(NUM_PBLKS), 
                         .WIDTH(PmRomWidth), .DEPTH(PmRomDepth), .ADDRW(PmRomAddrW)
                     )  
-                    GenROM (  .addr(shift_addr),  .data_out(shift_values)  );
+                    GenROM (  .addr(shift_rom_addr),  .data_out(shift_rom_out)  );
             end
             1: begin : Multi_LUT_ROM 
                 ProtoMatrixRom_MultiLUT #(
                         .NUM_Z(NUM_SUP_Z), .Z_VALUES(Z_VALUE_ARRAY), .NUM_PARITY_BLKS(NUM_PBLKS),
                         .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW)
                     )
-                    GenROM (  .addr(shift_addr),.data_out(shift_values)  ); 
+                    GenROM (  .addr(shift_rom_addr),.data_out(shift_rom_out)    ); 
             end  
             // 2: begin : BRAM_ROM
             //     ProtoMatrixRom_BRAM #(
@@ -158,11 +161,15 @@ module QCLDPCEncoderController #(
         end 
     endgenerate
     // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
-    //  Process 1:  Check the valid and ready handshake to feed valid into Pipe
-    //              Zero pad input into pipeline if is is not width of Max Z
+    //  Process 1:  PRE-PROCESSING
+    //      Loading data into the registers that feed the Rotators 
+    //      Check the valid and ready handshake to feed valid into Pipe
+    //      Zero pad input into pipeline if is is not width of Max Z        
     // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
-    //Constant Generate Function to attach the wires correctly to rotator inputs
-    //This is a generate fuction to remove any runtime logic despite how gross It looks 
+    //Constant Generate Function to attach the wires correctly to rotator inputs, and generate ram OFFsets dynamically
+    //To support a config specifying any subset of the 3 Z's and maintain functionality regardless
+    //This is a generate fuction to remove any runtime logic in determining the i_data part and the Rom Offset calc 
+    //is here to keep both operations together in the code instead of one being a function in the pkg file or
     genvar ipz;
     generate
         for(ipz=0; ipz<NUM_SUP_Z; ipz++) begin
@@ -173,12 +180,28 @@ module QCLDPCEncoderController #(
                 assign i_data_proc[ipz] = { tilecnt{pkt_in.data[widthz-1:0]} };
             end 
             //Nonfactor so pad 
-            else  
+            else   
                 assign i_data_proc[ipz] = { (MAXZ-widthz){1'b0}, pkt_in.data[widthz-1:0]}; 
+
+            //Generate ROM Address offsets
+            if( Gen_Dedicated_Rot==1 && (ipz == NonFactorZMask)) 
+                assign rom_offsets[ipz] = { PmRomAddrW{1'b0} };
+            else 
+                assign rom_offsets[ipz] = PmRomAddrW'(ipz * (NUM_INFO_BLKS + NUM_PARITY_BLKS) * NUM_PARITY_BLKS);
         end
     endgenerate
-    //Connect pkg_per lane wires to the pkt_in_processed regs
-    
+
+    //Combinational logic to get ROM Addresses, #TODO, investigate the critical path implications, this adds to the 
+    //overall logic of the first step, if necessary consider pushing out to its own step to decrease critical path of This step
+    //Could even do something super wacky too. Ideas abound! 
+    always_comb begin
+        shift_rom_addr     = '0;
+        shift_rom_addr_NFZ = '0;
+        for(int gzdoom=0; gzdoom<NUM_SUP_Z; gzdoom++)begin
+            if(req_z[i])
+        end
+    end
+
     always_ff @(posedge CLK) begin
         if(!rst_n) begin
             pkt_in_processed           <= '0;
