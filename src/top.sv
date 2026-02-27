@@ -17,6 +17,8 @@ import qcldpcPkg::*;
 //      0 = Single-Rate LUT Based Rom (i.e only one speed and one Proto Matrix defined for that speed)   
 //      1 = Multi-RATE LUT, Simple LUT Based rom that supports 3 seperate Z's
 //      2 = BRAM Based ROM Supporting 3 Seperate Z's, shouldn't be used for this version of the QCLDPC
+//
+//  TODO: ADD the fact that Req_Z is static to 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 module QCLDPCEncoderController #(
     parameter int NUM_SUP_Z                         =               3,
@@ -24,7 +26,7 @@ module QCLDPCEncoderController #(
     parameter int IBLKS_NUM                         =               20,
     parameter int NUM_PBLKS                         =               4,         
     parameter int ROM_TYPE                          =               1,          
-    parameter int Z_VALUE_ARRAY[1:NUM_OF_SUPPORTED_Z] =             {27, 54, 81},
+    parameter int Z_VALUE_ARRAY[0:NUM_OF_SUPPORTED_Z] =             {27, 54, 81},
     parameter int ROTATES_PER_CYCLE                 =               1,      
     parameter int NUM_ACCUM_PIPE_SPLITS             =               2,      //Starting with 2 
     
@@ -34,20 +36,20 @@ module QCLDPCEncoderController #(
     localparam int PmRomDepth = (IBLKS_NUM+NUM_PBLKS) * NUM_PBLKS * (NUM_SUP_Z - Gen_Dedicated_Rot),
     localparam int PmRomWidth = $clog2(MAXZ),
     localparam int PmRomAddrW = $clog2(PmRomDepth),
-    //Non Factor Z LUT
+    //Non Factor Z LUT Rom
     localparam int NFZPmRomDepth = (IBLKS_NUM+NUM_PBLKS) * NUM_PBLKS * Gen_Dedicated_Rot;
-    localparam int NFZPmRomWidth = $clog2(Z_VALUE_ARRAY[(Gen_Dedicated_Rot == 0) ? 1 : Gen_Dedicated_Rot]);
+    localparam int NFZPmRomWidth = $clog2(Z_VALUE_ARRAY[(Gen_Dedicated_Rot == 0) ? 1 : Gen_Dedicated_Rot]);   //Default to 1 to avoid compile errors from verilator 
     localparam int NFZPmRomAddrW = $clog2(NFZPmRomDepth)
 )(
-    input  logic CLK,   rst_n,   in_valid,   in_last,   //In_valid and in_last for handshake signals 
-    input  logic [NUM_SUP_Z-1:0] req_z,                 //Unused in ROM_Type 0 Highest Value corresponds to  
+    input  logic CLK,   rst_n, in_valid,   in_last,   //In_valid and in_last for handshake signals 
+    input  z_req_t req_z,           //STATIC, 3'b100 is 27, 3'b010 is 54, 3'b001 is 81, regardless of how many req_z, change it in Package
     input  logic [MAXZ-1:0]                         i_data,   
     output logic [MAXZ*(NUM_PBLKS+IBLKS_NUM)-1:0]   p_data_out,
     output logic in_ready
 );
-    // -------------------------------------------------------------------------    
-    // Configuration check/error handling
-    // -------------------------------------------------------------------------   
+    //**************************************************************************************************************
+    // Configuration check/error handling Etc
+    //**************************************************************************************************************
     generate
         if ( ROM_TYPE > 1 ) begin
             initial $fatal(1, "Invalid ROM_TYPE=%0d \n  Supported Values are 1 and 0",ROM_TYPE);
@@ -56,102 +58,165 @@ module QCLDPCEncoderController #(
                 your design has %0d non factor of MaxZ Z values requesting to be supported", Gen_Dedicated_Rot );
         end
     endgenerate
+    property req_z_onehot;
+        @(posedge CLK) disable iff (!rst_n)
+        $onehot(req_z);
+    endproperty
+    assert property (req_z_onehot)
+        else $fatal(1, "req_z not one-hot: %0b", req_z);
+    //**************************************************************************************************************
+    //**************************************************************************************************************
+    
     // -------------------------------------------------------------------------    
     // Declaration of Internal Module Signals
     // -------------------------------------------------------------------------    
-    pipeline_pkt_t rot_pkt_in     [0:NUM_PBLKS-1];
-    pipeline_pkt_t rot_pkt_o_MaxZ [0:NUM_PBLKS-1];  //For 81 and 27       
-    pipeline_pkt_t rot_pkt_o_NFZ  [0:NUM_PBLKS-1];    
+    pipeline_pkt_t pkt_in_processed;              pipeline_pkt_t pkt_in_processed_NFZ;
+    pipeline_pkt_t pkt_per_lane [0:NUM_PBLKS-1];  pipeline_pkt_t pkt_per_lane_NFZ [0:NUM_PBLKS-1];
 
-    //Wires to connect inputs to the rotator inputs, Defined as wires to provide clarity as to that being the use.
     wire  [MAXZ-1:0] i_data_proc [0:NUM_SUP_Z-1];
-    wire  [MAXZ-1:0] rot_in; 
-
+    pipeline_pkt_t rot_pkt_o_MaxZ   [0:NUM_PBLKS-1];  //For 81 and 27       
+    pipeline_pkt_t rot_pkt_o_NFZ    [0:NUM_PBLKS-1];    
 
     logic [MAXZ:0] rotator_o [NUM_PBLKS-1:0];   
     //2 accumulator registers for each Parity block for Register Ping ponging 
     logic [MAXZ:0] accum_regs [0:NUM_PBLKS-1][0:NUM_ACCUM_PIPE_SPLITS-1][0:1]; 
     logic [MAXZ-1:0] parity_blk[(NUM_PBLKS*MAXZ)-1:0];    
 
-    logic [PmRomAddrW-1:0]     shift_addr;
-    logic [PmRomWidth-1:0]     shift_values     [0:NUM_PBLKS-1]; 
-    logic [NFZPmRomAddrW-1:0]  shift_addr_NFZ;
-    logic [NFZPmRomWidth-1:0]  shift_values_NFZ [0:NUM_PBLKS-1]; 
-
+    logic [PmRomAddrW-1:0]     shift_addr;      logic [PmRomWidth-1:0]     shift_values     [0:NUM_PBLKS-1]; 
+    logic [NFZPmRomAddrW-1:0]  shift_addr_NFZ;  logic [NFZPmRomWidth-1:0]  shift_values_NFZ [0:NUM_PBLKS-1]; 
 
     //Calculate # of stages of the Shifter Pipeline, to determine the needed Valid depth
     localparam int numPipelineSteps = ($clog2(MAXZ) % ROTATES_PER_CYCLE  != 0) ?
                                       (($clog2(MAXZ) / ROTATES_PER_CYCLE) +1 )  :
                                       ($clog2(MAXZ) / ROTATES_PER_CYCLE);
 
-    logic valid_flag_pipe; 
-
-    // -------------------------------------------------------------------------    
-    // Generate the requested pipelined Circular Shifter for MAXZ and Z=54
-    // -------------------------------------------------------------------------    
-    genvar nori;        
+    //==========================================================================    
+    // Generate ROM
+    //   The BRAM Rom is there for the currently not started Pointer Rotation
+    //   Morph of this codebase for Z's of like 256 and 352. in the 3DPP Spec
+    //   The Single LUT Rom is there for either single Z designs     
+    //==========================================================================-    
     generate
-        for(nori=0; nori<NUM_PBLKS; nori++) begin
-
-            //MaxZ Shifter 
-            (* keep_hierarchy = "yes" *)
-            pipelinedCircularShifter #(
-                .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE)
-            )
-            circ_shftr_inst (
-                .CLK( CLK ),  .rst_n( rst_n ),  .shift_val( shift_values[nori] )
-                .pkt_i( rot_pkt_in ), .pkt_o( rot_pkt_o_MaxZ[nori] ), 
-            );
-
-            if( Gen_Dedicated_Rot ) begin
-                //Z_54 Pipe
-                (* keep_hierarchy = "yes" *)
-                pipelinedCircularShifter #(
-                    .MAXZ(Z_VALUE_ARRAY[]), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE)
-                )
-                circ_shftr_inst (
-                    .CLK( CLK ),  .rst_n( rst_n ),  .shift_val( shift_values_NFZ[nori] )
-                    .pkt_i( rot_pkt_in ), .pkt_o( rot_pkt_o_MaxZ[nori] ), 
-                ); 
+        case (ROM_TYPE)
+            0: begin : Single_LUT_ROM
+                ProtoMatrixRom_SingleLUT #(   
+                        .THE_Z(MAXZ), .NUM_PARITY_BLKS(NUM_PBLKS), 
+                        .WIDTH(PmRomWidth), .DEPTH(PmRomDepth), .ADDRW(PmRomAddrW)
+                    )  
+                    GenROM (  .addr(shift_addr),  .data_out(shift_values)  );
             end
+            1: begin : Multi_LUT_ROM 
+                ProtoMatrixRom_MultiLUT #(
+                        .NUM_Z(NUM_SUP_Z), .Z_VALUES(Z_VALUE_ARRAY), .NUM_PARITY_BLKS(NUM_PBLKS),
+                        .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW)
+                    )
+                    GenROM (  .addr(shift_addr),.data_out(shift_values)  ); 
+            end  
+            // 2: begin : BRAM_ROM
+            //     ProtoMatrixRom_BRAM #(
+            //             .NUM_Z(NUM_SUP_Z), .NUM_PARITY_BLKS(NUM_PBLKS), .Z_VALUES(Z_VALUE_ARRAY),
+            //             .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW)
+            //         ) GenRom ( .CLK(CLK), .addr(shift_addr),.data_out(shift_values) );
+            // end 
+            default: begin : assert_invalid_cfg
+                $fatal(1, "Invalid ROM Configuration Selected - Aborting");
+            end
+        endcase
         
+        //Generate second single format Look up table for second dedicated Rot
+        if(Gen_Dedicated_Rot) begin
+            ProtoMatrixRom_SingleLUT #(
+                .THE_Z(Z_VALUE_ARRAY[NonFactorZMask]),  .NUM_PARITY_BLKS(NUM_PBLKS), 
+                .WIDTH(NFZPmRomWidth), .DEPTH(NFZPmRomDepth), .ADDRW(NFZPmRomAddrW)
+            )
+            GenROMDedicateROT ( .addr(shift_addr_NFZ),  .data_out(shift_values_NFZ)  );
         end
     endgenerate
-
-
-
-
+    //==========================================================================    
+    // Generate the requested pipelined Circular Shifter for MAXZ and Z=54
+    //==========================================================================    
+    genvar nori, allen;         //<-- Named after my cats lovely!      
+    generate
+        for(nori=0; nori<NUM_PBLKS; nori++) begin : MAXZ_SHIFTER_INST
+            (* keep_hierarchy = "yes" *)
+            pipelinedCircularShifter #( .MAXZ(MAXZ), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE) )
+            circ_shftr_inst (
+                .CLK( CLK ), .rst_n( rst_n ), .pkt_i( pkt_per_lane[nori] ), .pkt_o( rot_pkt_o_MaxZ[nori] )        );
+        end
+    endgenerate
+    generate 
+        if(Gen_Dedicated_Rot) begin  
+            for(allen=0; allen<NUM_PBLKS; allen++) begin : DEDICATED_NON_FACTOR_SHIFTER_INST
+                (* keep_hierarchy = "yes" *)
+                pipelinedCircularShifter #(
+                    .MAXZ(Z_VALUE_ARRAY[NonFactorZMask]), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE) )
+                circ_shftr_inst (
+                    .CLK( CLK ), .rst_n( rst_n ), .pkt_i( pkt_per_lane_NFZ[allen] ), .pkt_o( rot_pkt_o_NFZ[allen] ) ); 
+            end
+        end else begin 
+             assign rot_pkt_o_NFZ = '{default: '0};  //Assign it to 0 if not there 
+        end 
+    endgenerate
     // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
     //  Process 1:  Check the valid and ready handshake to feed valid into Pipe
     //              Zero pad input into pipeline if is is not width of Max Z
     // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
-
-
-    
+    //Constant Generate Function to attach the wires correctly to rotator inputs
+    //This is a generate fuction to remove any runtime logic despite how gross It looks 
+    genvar ipz;
+    generate
+        for(ipz=0; ipz<NUM_SUP_Z; ipz++) begin
+            localparam int tilecnt = MAXZ / Z_VALUE_ARRAY[ipz]
+            //Factor so Tile
+            if(MAXZ % Z_VALUE_ARRAY[ipz] == 0) begin  
+                localparam int widthz  = Z_VALUE_ARRAY[ipz];
+                assign i_data_proc[ipz] = { tilecnt{pkt_in.data[widthz-1:0]} };
+            end 
+            //Nonfactor so pad 
+            else  
+                assign i_data_proc[ipz] = { (MAXZ-widthz){1'b0}, pkt_in.data[widthz-1:0]}; 
+        end
+    endgenerate
+    //Connect pkg_per lane wires to the pkt_in_processed regs
     
     always_ff @(posedge CLK) begin
         if(!rst_n) begin
-            i_data_processed    <= '0;
-            shift_addr          <= '0;
-            valid_flag_pipe     <= '0;
+            pkt_in_processed           <= '0;
+            pkt_in_processed_NFZ       <= '0;
+            shift_addr                 <= '0;
+            shift_addr_NFZ             <= '0
         end else begin
-            // FIXME : Note to the user, it as of this moment chose to save time by not writing code
-            // to manage the input of case statement so that if the number of possible combinations changes
-            // from the default 3 it is dealt with automatically so you have to change it yourself manually as of now 
+            pkt_in_processed.valid     <= 1'b0;
+            pkt_in_processed.last      <= in_last;
+            pkt_in_processed.data      <= '0;
+            pkt_in_processed.svals     <= '0;
+
+            pkt_in_processed_NFZ.valid <= 1'b0;  
+            pkt_in_processed_NFZ.last  <= in_last;
+            pkt_in_processed_NFZ.data  <= '0;
+            pkt_in_processed_NFZ.svals <= '0;
+            
             unique case (req_z)
-                //The lowest bit corresponds to a selection of the first item in the array
-                3'b001 : begin 
-                    //27 has great extraction because it fits neatly into 81
+                Z_27 : begin
+                    pkt_in_processed.data       <= i_data_proc[0];
+                    pkt_in_processed.valid      <= (in_valid && in_ready);
+                    pkt_in_processed.svals      <= 
+                end
+                Z_54 : begin
+                    
+                end
+                
+                3'b100 : begin 
+                    
+
                     i_data_processed <= {i_data[(Z_VALUE_ARRAY[0]-1):0], i_data[(Z_VALUE_ARRAY[0]-1):0], i_data[(Z_VALUE_ARRAY[0]-1):0]};
-                    shift_addr <= '0;   //************ IT SHOULD BE FINE AN INFERED COMBINATIONAL LINE WITH THE COMPILER 
                 end
                 3'b010 : begin 
                     i_data_processed <= {{ (MAXZ-Z_VALUE_ARRAY[1]){1'b0} }, i_data[(Z_VALUE_ARRAY[1]-1):0] };
-                    shift_addr <= PmRomAddrW'(PmRomDepth/NUM_SUP_Z)-1;
                 end
                 3'b100 : begin 
                     i_data_processed <= i_data;
-                    shift_addr <= PmRomAddrW'(PmRomDepth/NUM_SUP_Z*2)-1;
+                    
                 end
                 default : begin 
                     i_data_processed <= '0;
@@ -163,7 +228,10 @@ module QCLDPCEncoderController #(
             if(in_valid && in_ready)
                 valid_flag_pipe <= '1;
             else 
-                valid_flag_pipe <= '0;      
+                valid_flag_pipe <= '0;     
+                                    shift_addr <= '0;   //************ IT SHOULD BE FINE AN INFERED COMBINATIONAL LINE WITH THE COMPILER 
+                    shift_addr <= PmRomAddrW'(PmRomDepth/NUM_SUP_Z*2)-1;
+                    shift_addr <= PmRomAddrW'(PmRomDepth/NUM_SUP_Z)-1; 
         end
     end
     // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
@@ -256,52 +324,9 @@ module QCLDPCEncoderController #(
 
 
 
-    // -------------------------------------------------------------------------    
-    // Generate ROM
-    //      The BRAM Rom is there for the currently not started Pointer Rotation
-    //      Morph of this codebase for Z's of like 256 and 352. in the 3DPP Spec
-    //      The Single LUT Rom is there for either single Z designs like a 
-    //      Second rotator for the IEEE Spec version
-    // -------------------------------------------------------------------------    
-    generate
-        case (ROM_TYPE)
-            0: begin : Single_LUT_ROM
-                ProtoMatrixRom_SingleLUT #(   
-                        .THE_Z(MAXZ), .NUM_PARITY_BLKS(NUM_PBLKS), .WIDTH(PmRomWidth), 
-                        .DEPTH(PmRomDepth), .ADDRW(PmRomAddrW)
-                    )  
-                    GenROM (
-                        .addr(shift_addr),  .data_out(shift_values)
-                    );
-            end
-
-            1: begin : Multi_LUT_ROM 
-                ProtoMatrixRom_MultiLUT #(
-                        .NUM_Z(NUM_SUP_Z), .Z_VALUES(Z_VALUE_ARRAY), .NUM_PARITY_BLKS(NUM_PBLKS),
-                        .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW)
-                    )
-                    GenROM (
-                        .addr(shift_addr),.data_out(shift_values)
-                    ); 
-            end
-            
-            // //Same for .data_out since multidimentional 
-            // 2: begin : BRAM_ROM
-            //     ProtoMatrixRom_BRAM #(
-            //             .NUM_Z(NUM_SUP_Z), .NUM_PARITY_BLKS(NUM_PBLKS), .Z_VALUES(Z_VALUE_ARRAY),
-            //             .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW)
-            //         )
-            //         GenRom (
-            //             .CLK(CLK), .addr(shift_addr),.data_out(shift_values)
-            //         );
-            // end 
-
-            default: begin : assert_invalid_cfg
-                $fatal(1, "Invalid ROM Configuration Selected - Aborting");
-            end
-        endcase 
-    endgenerate
+    
     
      
 endmodule
+
 
