@@ -22,13 +22,12 @@ module pipelinedCircularShifter #(
     parameter int ROTATES_PER_CYCLE       = 1 //Should throw an error on 0
 )(
     input  logic CLK, rst_n, valid_in,
-    input logic [$clog2(MAXZ)-1:0] shift_val,
     input  pipeline_pkt_t pkt_i,
     output pipeline_pkt_t pkt_o
 );  
     //==========================================================================    
     // Elaboration Time Constants and Config Check
-    // ----------------------------------------------------------------   
+    //==========================================================================
     localparam int NumMuxlevels             = $clog2(MAXZ);
     localparam int ShiftsPerPipelineLevel   = ROTATES_PER_CYCLE;
     localparam int NumStages                = (NumMuxlevels % ShiftsPerPipelineLevel  != 0) ?
@@ -44,12 +43,12 @@ module pipelinedCircularShifter #(
         end
     endgenerate
     //==========================================================================
-        
+
     pipeline_pkt_t stage_regs[0:NumStages];    
-  
     assign stage_regs[0].data   = pkt_i.data;
     assign stage_regs[0].last   = pkt_i.last;
     assign stage_regs[0].valid  = pkt_i.valid;
+    assign stage_regs[0].svals  = pkt_i.svals;
 
     genvar i, qq;
     generate
@@ -72,7 +71,7 @@ module pipelinedCircularShifter #(
                 ) rot_inst (
                     .i_data(stage_wires[qq]),
                     .o_data(stage_wires[qq+1]),
-                    .en_en(shift_val[s_idx])
+                    .en_en(stage_regs[i].svals[s_idx])
                 );
             end : RotStagePerPipe        
                     
@@ -84,14 +83,17 @@ module pipelinedCircularShifter #(
                     stage_regs[i+1].data  <= stage_wires[ShiftsPerPipelineLevel];
                     stage_regs[i+1].valid <= stage_regs[i].valid;
                     stage_regs[i+1].last  <= stage_regs[i].last;
+                    stage_regs[i+1].svals <= stage_regs[i].svals;
                 end
             end
         end
     endgenerate
-    
+
     assign pkt_o.data   = stage_regs[NumStages].data;
     assign pkt_o.valid  = stage_regs[NumStages].valid;
     assign pkt_o.last   = stage_regs[NumStages].last;
+    //Don't care its not used anyway
+    //assign pkt_o.svals  = stage_regs[NumStages].svals; 
 
 endmodule
 // -------------------------------------------------------------------------    

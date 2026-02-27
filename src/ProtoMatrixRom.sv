@@ -14,6 +14,8 @@
 /* Note: "-" (zero block/skip) values are stored as the maximum value available for the 
     given WIDTH as none of the possible Z values are equal to The maximum value of the WIDTH   */
 // ------------------------------------------------------------------------
+
+//# TODO I have to fix the entries for 27, as they need to be the highest value of the width of MAXZ 
 module ProtoMatrixRom_SingleLUT #(
     parameter int THE_Z = 54,                   
     parameter int WIDTH = $clog2(THE_Z), // 6
