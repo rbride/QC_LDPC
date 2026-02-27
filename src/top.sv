@@ -32,16 +32,17 @@ module QCLDPCEncoderController #(
     parameter int ROTATES_PER_CYCLE                      =      1,      
     parameter int NUM_ACCUM_PIPE_SPLITS                  =      2,                //Increase for more Head Room
     
-    localparam int Gen_Dedicated_Rot    =  detr_nonfactor_z( MAXZ, Z_VALUE_ARRAY, NUM_SUP_Z );
-    localparam int NonFactorZMask       =  nonfactor_z_mask( MAXZ, Z_VALUE_ARRAY, NUM_SUP_Z );
-    
-    localparam int PmRomDepth           = (IBLKS_NUM+NUM_PBLKS) * NUM_PBLKS * (NUM_SUP_Z - Gen_Dedicated_Rot),
-    localparam int PmRomWidth           = $clog2(MAXZ),
-    localparam int PmRomAddrW           = $clog2(PmRomDepth),
+    localparam int Gen_Dedicated_Rot                 = detr_nonfactor_z( MAXZ, Z_VALUE_ARRAY, NUM_SUP_Z );
+    localparam int NonFactorZIdx                     = nonfactor_z_mask( MAXZ, Z_VALUE_ARRAY, NUM_SUP_Z );
+    //localparam logic [NUM_SUP_Z-1:0] NonFactorZMask  = (Gen_Dedicated_Rot) ? (logic [NUM_SUP_Z-1:0]'(1) << NonFactorZIdx) : '0;
+    localparam logic [NUM_SUP_Z-1:0] NonFactorZMask  = (Gen_Dedicated_Rot) ? NUM_SUP_Z'(1 << NonFactorZIdx) : '0;
+    localparam int PmRomDepth                        = (IBLKS_NUM+NUM_PBLKS) * NUM_PBLKS * (NUM_SUP_Z - Gen_Dedicated_Rot),
+    localparam int PmRomWidth                        = $clog2(MAXZ),
+    localparam int PmRomAddrW                        = $clog2(PmRomDepth),
     //Non Factor Z LUT Rom
-    localparam int NFZPmRomDepth        = (IBLKS_NUM+NUM_PBLKS) * NUM_PBLKS * Gen_Dedicated_Rot;
-    localparam int NFZPmRomWidth        = $clog2(Z_VALUE_ARRAY[(Gen_Dedicated_Rot == 0) ? 1 : Gen_Dedicated_Rot]);   //Default to 1 to avoid compile errors from verilator 
-    localparam int NFZPmRomAddrW        = $clog2(NFZPmRomDepth)
+    localparam int NFZPmRomDepth                     = (IBLKS_NUM+NUM_PBLKS) * NUM_PBLKS * Gen_Dedicated_Rot;
+    localparam int NFZPmRomWidth                     = $clog2(Z_VALUE_ARRAY[(Gen_Dedicated_Rot == 0) ? 1 : Gen_Dedicated_Rot]);   //Default to 1 to avoid compile errors from verilator 
+    localparam int NFZPmRomAddrW                     = $clog2(NFZPmRomDepth)
 )(
     input  logic CLK,   rst_n, in_valid,   in_last,   //In_valid and in_last for handshake signals 
     input  z_req_t req_z,           //STATIC, 3'b100 is 27, 3'b010 is 54, 3'b001 is 81, regardless of how many req_z, change it in Package
@@ -91,7 +92,7 @@ module QCLDPCEncoderController #(
     logic [MAXZ:0] accum_regs [0:NUM_PBLKS-1][0:NUM_ACCUM_PIPE_SPLITS-1][0:1]; 
     logic [MAXZ-1:0] parity_blk[(NUM_PBLKS*MAXZ)-1:0];    
     
-    logic [$clog(IBLKS_NUM)-1:0] colm_cnt; 
+    logic [$clog2(IBLKS_NUM)-1:0] colm_cnt; 
 
     //==========================================================================    
     // Generate ROM
@@ -129,7 +130,7 @@ module QCLDPCEncoderController #(
         //Generate second single format Look up table for second dedicated Rot
         if(Gen_Dedicated_Rot) begin
             ProtoMatrixRom_SingleLUT #(
-                .THE_Z(Z_VALUE_ARRAY[NonFactorZMask]),  .NUM_PARITY_BLKS(NUM_PBLKS), 
+                .THE_Z(Z_VALUE_ARRAY[NonFactorZIdx]),  .NUM_PARITY_BLKS(NUM_PBLKS), 
                 .WIDTH(NFZPmRomWidth), .DEPTH(NFZPmRomDepth), .ADDRW(NFZPmRomAddrW)
             )
             GenROMDedicateROT ( .addr(shift_addr_NFZ),  .data_out(shift_values_NFZ)  );
@@ -152,7 +153,7 @@ module QCLDPCEncoderController #(
             for(allen=0; allen<NUM_PBLKS; allen++) begin : DEDICATED_NON_FACTOR_SHIFTER_INST
                 (* keep_hierarchy = "yes" *)
                 pipelinedCircularShifter #(
-                    .MAXZ(Z_VALUE_ARRAY[NonFactorZMask]), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE) )
+                    .MAXZ(Z_VALUE_ARRAY[NonFactorZIdx]), .ROTATES_PER_CYCLE(ROTATES_PER_CYCLE) )
                 circ_shftr_inst (
                     .CLK( CLK ), .rst_n( rst_n ), .pkt_i( pkt_per_lane_NFZ[allen] ), .pkt_o( rot_pkt_o_NFZ[allen] ) ); 
             end
@@ -161,12 +162,12 @@ module QCLDPCEncoderController #(
         end 
     endgenerate
     // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
-    //  Process 1:  PRE-PROCESSING
-    //      Loading data into the registers that feed the Rotators 
-    //      Check the valid and ready handshake to feed valid into Pipe
-    //      Zero pad input into pipeline if is is not width of Max Z        
+    //  Stage 0:  Tiling 
+    //      The preprocessing stage required extensive combinational logic
+    //      and was thus the critical path, as a result the tiling
+    //      segment has been split into its own Stage
     // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
-    //Constant Generate Function to attach the wires correctly to rotator inputs, and generate ram OFFsets dynamically
+    //Constant Generate Function to attach the wires correctly to rotator inputs, and generate ram Offsets dynamically
     //To support a config specifying any subset of the 3 Z's and maintain functionality regardless
     //This is a generate fuction to remove any runtime logic in determining the i_data part and the Rom Offset calc 
     //is here to keep both operations together in the code instead of one being a function in the pkg file or
@@ -174,87 +175,112 @@ module QCLDPCEncoderController #(
     generate
         for(ipz=0; ipz<NUM_SUP_Z; ipz++) begin
             localparam int tilecnt = MAXZ / Z_VALUE_ARRAY[ipz]
+            localparam int widthz  = Z_VALUE_ARRAY[ipz];
+            
+            // Generate a Temp wire used to feed the TILED register
+            logic [MAXZ-1:0] tile_data_comb; 
             //Factor so Tile
             if(MAXZ % Z_VALUE_ARRAY[ipz] == 0) begin  
-                localparam int widthz  = Z_VALUE_ARRAY[ipz];
-                assign i_data_proc[ipz] = { tilecnt{pkt_in.data[widthz-1:0]} };
-            end 
+                assign tile_data_comb = { tilecnt{i_data[widthz-1:0]} };
             //Nonfactor so pad 
-            else   
-                assign i_data_proc[ipz] = { (MAXZ-widthz){1'b0}, pkt_in.data[widthz-1:0]}; 
+            end else begin
+                assign i_data_proc[ipz] = { {(MAXZ-widthz){1'b0}}, i_data[widthz-1:0] };
+            end
 
-            //Generate ROM Address offsets
-            if( Gen_Dedicated_Rot==1 && (ipz == NonFactorZMask)) 
-                assign rom_offsets[ipz] = { PmRomAddrW{1'b0} };
-            else 
-                assign rom_offsets[ipz] = PmRomAddrW'(ipz * (NUM_INFO_BLKS + NUM_PARITY_BLKS) * NUM_PARITY_BLKS);
+            //Generate ROM Address offsets NFZ path always starts at 0 — it has its own dedicated ROM
+            // Main path's position in main ROM = ipz minus any nonfactor entries before it
+            if( Gen_Dedicated_Rot==1 && (ipz == NonFactorZIdx)) begin
+                assign rom_offsets[ipz] = '0;
+            end else begin
+                assign rom_offsets[ipz] = PmRomAddrW'( (ipz
+                    - ((Gen_Dedicated_Rot && (ipz > NonFactorZIdx)) ? 1 : 0))
+                    * (IBLKS_NUM + NUM_PBLKS) * NUM_PBLKS);
+            end
         end
     endgenerate
 
-    //Combinational logic to get ROM Addresses, #TODO, investigate the critical path implications, this adds to the 
-    //overall logic of the first step, if necessary consider pushing out to its own step to decrease critical path of This step
-    //Could even do something super wacky too. Ideas abound! 
+
+
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
+    //  Process 1:  PRE-PROCESSING
+    //      Loading data into the registers that feed the Rotators 
+    //      Check the valid and ready handshake to feed valid into Pipe
+    //      Zero pad input into pipeline if is is not width of Max Z        
+    //
+    //  
+    // 
+    //  FIXME: as it stands this step needs to be checked to determine if it is 
+    //  The critical Path, as the step must both do a mux select based on an input
+    //  and throw that input into stuff, and also wait for the LUT based rom to 
+    //  Do so. If it is the critical path, the ROM Address should be done in 
+    //  Its own step, registered, then fed into the logic the next step, splitting it
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
+    
+    // -------------------------------------------------------------------------
+    // ROM Address Generation — combinational from colm_cnt + offset
+    // Both addresses stable same cycle colm_cnt holds its value
+    // ROM output therefore valid same cycle — captured in always_ff below
+    // -------------------------------------------------------------------------
     always_comb begin
         shift_rom_addr     = '0;
         shift_rom_addr_NFZ = '0;
         for(int gzdoom=0; gzdoom<NUM_SUP_Z; gzdoom++)begin
-            if(req_z[i])
+            if(req_z[gzdoom]) begin
+                if(NonFactorZMask[gzdoom]) 
+                    shift_addr_NFZ  = PmRomAddrW'(rom_offsets[gzdoom]+colm_cnt);
+                else 
+                    shift_rom_addr  = PmRomAddrW'(rom_offsets[gzdoom]+colm_cnt);
+            end
         end
     end
 
+    //There is no throttling or backpressure pushing at the moment so in_read always 1
+    assign in_ready = 1'b1;
+
     always_ff @(posedge CLK) begin
         if(!rst_n) begin
-            pkt_in_processed           <= '0;
-            pkt_in_processed_NFZ       <= '0;
-            shift_addr                 <= '0;
-            shift_addr_NFZ             <= '0
+            colm_cnt    <=  '0;
+
+            for(int doom=0; doom<NUM_PBLKS; doom++) begin
+                pkt_per_lane[doom]      <= '0;
+                pkt_per_lane_NFZ[doom]  <= '0;
+            end
+        
         end else begin
-            pkt_in_processed.valid     <= 1'b0;
-            pkt_in_processed.last      <= in_last;
-            pkt_in_processed.data      <= '0;
-            pkt_in_processed.svals     <= '0;
-
-            pkt_in_processed_NFZ.valid <= 1'b0;  
-            pkt_in_processed_NFZ.last  <= in_last;
-            pkt_in_processed_NFZ.data  <= '0;
-            pkt_in_processed_NFZ.svals <= '0;
             
-            unique case (req_z)
-                Z_27 : begin
-                    pkt_in_processed.data       <= i_data_proc[0];
-                    pkt_in_processed.valid      <= (in_valid && in_ready);
-                    pkt_in_processed.svals      <= 
-                end
-                Z_54 : begin
-                    
-                end
-                
-                3'b100 : begin 
-                    
+            for(int etrn=0; etrn<NUM_PBLKS; etrn++) begin
+                //Defaults 
+                pkt_per_lane[etrn].valid        <= 1'b0;
+                pkt_per_lane[etrn].last         <= in_last;
+                pkt_per_lane[etrn].data         <= '0;  
+                pkt_per_lane[etrn].svals        <= '0;
 
-                    i_data_processed <= {i_data[(Z_VALUE_ARRAY[0]-1):0], i_data[(Z_VALUE_ARRAY[0]-1):0], i_data[(Z_VALUE_ARRAY[0]-1):0]};
-                end
-                3'b010 : begin 
-                    i_data_processed <= {{ (MAXZ-Z_VALUE_ARRAY[1]){1'b0} }, i_data[(Z_VALUE_ARRAY[1]-1):0] };
-                end
-                3'b100 : begin 
-                    i_data_processed <= i_data;
+                pkt_per_lane_NFZ[etrn].valid    <= 1'b0;
+                pkt_per_lane_NFZ[etrn].last     <= in_last;
+                pkt_per_lane_NFZ[etrn].data     <= '0;  
+                pkt_per_lane_NFZ[etrn].svals    <= '0;
+
+                unique case (req_z)
+                    Z_27 : begin
+                        pkt_per_lane[etrn].data     <= i_data_proc[0];
+                        pkt_per_lane[etrn].valid    <= (in_valid && in_ready);
+                    end
+                    Z_54 : begin
+                        pkt_per_lane_NFZ[etrn].data     <= i_data_proc[1];
+                        pkt_per_lane_NFZ[etrn].valid    <= (in_valid && in_ready);
+                    end
+                    Z_81 : begin
+                        pkt_per_lane[etrn].data     <= i_data_proc[2];
+                        pkt_per_lane[etrn].valid    <= (in_valid && in_ready);
+                    end
                     
-                end
-                default : begin 
-                    i_data_processed <= '0;
-                    shift_addr <= '0;
-                end
-            endcase
-                
-            //Actual Fire instruction is this 
-            if(in_valid && in_ready)
-                valid_flag_pipe <= '1;
-            else 
-                valid_flag_pipe <= '0;     
-                                    shift_addr <= '0;   //************ IT SHOULD BE FINE AN INFERED COMBINATIONAL LINE WITH THE COMPILER 
-                    shift_addr <= PmRomAddrW'(PmRomDepth/NUM_SUP_Z*2)-1;
-                    shift_addr <= PmRomAddrW'(PmRomDepth/NUM_SUP_Z)-1; 
+                endcase
+            end
+
+            //Simple Counter to count blocks to progress through the Shift Addresses
+            if(in_valid && in_ready) begin
+                colm_cnt <= in_last ? '0 : colm_cnt + 1; 
+            end
         end
     end
     // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
