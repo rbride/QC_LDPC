@@ -37,11 +37,11 @@ module QCLDPCEncoderController #(
     //localparam logic [NUM_SUP_Z-1:0] NonFactorZMask  = (Gen_Dedicated_Rot) ? (logic [NUM_SUP_Z-1:0]'(1) << NonFactorZIdx) : '0;
     localparam logic [NUM_SUP_Z-1:0] NonFactorZMask  = (Gen_Dedicated_Rot) ? NUM_SUP_Z'(1 << NonFactorZIdx) : '0;
     localparam int PmRomDepth                        = (IBLKS_NUM+NUM_PBLKS) * NUM_PBLKS * (NUM_SUP_Z - Gen_Dedicated_Rot),
-    localparam int PmRomWidth                        = $clog2(MAXZ),
+    localparam int PmRomWidth                        = $clog2(MAXZ)+1,              //Extra Top bit is used for Determining if the 
     localparam int PmRomAddrW                        = $clog2(PmRomDepth),
     //Non Factor Z LUT Rom
     localparam int NFZPmRomDepth                     = (IBLKS_NUM+NUM_PBLKS) * NUM_PBLKS * Gen_Dedicated_Rot;
-    localparam int NFZPmRomWidth                     = $clog2(Z_VALUE_ARRAY[(Gen_Dedicated_Rot == 0) ? 1 : Gen_Dedicated_Rot]);   //Default to 1 to avoid compile errors from verilator 
+    localparam int NFZPmRomWidth                     = $clog2(Z_VALUE_ARRAY[(Gen_Dedicated_Rot == 0) ? 1 : NonFactorZIdx])+1;   //Default to 1 to avoid compile errors from verilator 
     localparam int NFZPmRomAddrW                     = $clog2(NFZPmRomDepth)
 )(
     input  logic CLK,   rst_n, in_valid,   in_last,   //In_valid and in_last for handshake signals 
@@ -78,10 +78,10 @@ module QCLDPCEncoderController #(
     // -------------------------------------------------------------------------    
     // Declaration of Internal Module Signals
     // -------------------------------------------------------------------------    
-    pipeline_pkt_t pkt_per_lane [0:NUM_PBLKS-1];  pipeline_pkt_t pkt_per_lane_NFZ [0:NUM_PBLKS-1];
+    pipeline_pkt_t pkt_per_lane [0:NUM_PBLKS-1];      pipeline_pkt_t pkt_per_lane_NFZ [0:NUM_PBLKS-1];
     logic [PmRomAddrW-1:0] rom_offsets [0:NUM_SUP_Z-1];   //Used to generate constants in a generate function for ram offsets  
 
-    wire  [MAXZ-1:0] i_data_proc [0:NUM_SUP_Z-1];
+    wire  [MAXZ-1:0] i_data_proc [0:NUM_SUP_Z-1];     logic pre_proc_valid, pre_proc_last;
     pipeline_pkt_t rot_pkt_o_MaxZ   [0:NUM_PBLKS-1];  pipeline_pkt_t rot_pkt_o_NFZ    [0:NUM_PBLKS-1];    
 
     logic [PmRomAddrW-1:0]     shift_rom_addr;      logic [PmRomWidth-1:0]     shift_rom_out     [0:NUM_PBLKS-1]; 
@@ -176,16 +176,25 @@ module QCLDPCEncoderController #(
         for(ipz=0; ipz<NUM_SUP_Z; ipz++) begin
             localparam int tilecnt = MAXZ / Z_VALUE_ARRAY[ipz]
             localparam int widthz  = Z_VALUE_ARRAY[ipz];
-            
-            // Generate a Temp wire used to feed the TILED register
+            // Generate a Temp wire used to feed the TILED register and tiled reg
             logic [MAXZ-1:0] tile_data_comb; 
+            logic [MAXZ-1:0] tile_data_reg; 
             //Factor so Tile
             if(MAXZ % Z_VALUE_ARRAY[ipz] == 0) begin  
                 assign tile_data_comb = { tilecnt{i_data[widthz-1:0]} };
             //Nonfactor so pad 
             end else begin
-                assign i_data_proc[ipz] = { {(MAXZ-widthz){1'b0}}, i_data[widthz-1:0] };
+                assign tile_data_comb = { {(MAXZ-widthz){1'b0}}, i_data[widthz-1:0] };
             end
+
+            always_ff @(posedge CLK) begin
+                if(!rst_n) 
+                    tile_data_reg <= '0;
+                else
+                    tile_data_reg <= tile_data_comb;
+            end
+            //Feed the registers output to the the register used for the next stage
+            assign i_data_proc[ipz] <= tile_data_reg;
 
             //Generate ROM Address offsets NFZ path always starts at 0 — it has its own dedicated ROM
             // Main path's position in main ROM = ipz minus any nonfactor entries before it
@@ -198,29 +207,25 @@ module QCLDPCEncoderController #(
             end
         end
     endgenerate
-
-
-
+    //Register the inputs so they can be used in the next stop 
+    always_ff @(posedge CLK) begin
+        if(!rst_n) begin
+            pre_proc_last  <= '0;
+            pre_proc_valid <= '0;
+        end else begin
+            pre_proc_last  <= valid_in;
+            pre_proc_valid <= in_last;
+        end
+    end
     // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
-    //  Process 1:  PRE-PROCESSING
+    //  Stage 1:  PRE-PROCESSING Step 2
     //      Loading data into the registers that feed the Rotators 
     //      Check the valid and ready handshake to feed valid into Pipe
-    //      Zero pad input into pipeline if is is not width of Max Z        
-    //
-    //  
-    // 
-    //  FIXME: as it stands this step needs to be checked to determine if it is 
-    //  The critical Path, as the step must both do a mux select based on an input
-    //  and throw that input into stuff, and also wait for the LUT based rom to 
-    //  Do so. If it is the critical path, the ROM Address should be done in 
-    //  Its own step, registered, then fed into the logic the next step, splitting it
+    //      Zero pad input into pipeline if is is not width of Max Z   
+    //  First Always Comb: Generates ROM address Combinationally based on 
+    //  COLM_CNT and Precomputed Offsets, and makes the rom Output availible 
+    //  the same cycle since its stored in a LUT ROM, and thus used in always_ff
     // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++    
-    
-    // -------------------------------------------------------------------------
-    // ROM Address Generation — combinational from colm_cnt + offset
-    // Both addresses stable same cycle colm_cnt holds its value
-    // ROM output therefore valid same cycle — captured in always_ff below
-    // -------------------------------------------------------------------------
     always_comb begin
         shift_rom_addr     = '0;
         shift_rom_addr_NFZ = '0;
@@ -251,35 +256,22 @@ module QCLDPCEncoderController #(
             for(int etrn=0; etrn<NUM_PBLKS; etrn++) begin
                 //Defaults 
                 pkt_per_lane[etrn].valid        <= 1'b0;
-                pkt_per_lane[etrn].last         <= in_last;
+                pkt_per_lane[etrn].last         <= pre_proc_valid;
                 pkt_per_lane[etrn].data         <= '0;  
-                pkt_per_lane[etrn].svals        <= '0;
+                pkt_per_lane[etrn].svals        <= shi
 
                 pkt_per_lane_NFZ[etrn].valid    <= 1'b0;
-                pkt_per_lane_NFZ[etrn].last     <= in_last;
+                pkt_per_lane_NFZ[etrn].last     <= pre_proc_valid;
                 pkt_per_lane_NFZ[etrn].data     <= '0;  
                 pkt_per_lane_NFZ[etrn].svals    <= '0;
 
-                unique case (req_z)
-                    Z_27 : begin
-                        pkt_per_lane[etrn].data     <= i_data_proc[0];
-                        pkt_per_lane[etrn].valid    <= (in_valid && in_ready);
-                    end
-                    Z_54 : begin
-                        pkt_per_lane_NFZ[etrn].data     <= i_data_proc[1];
-                        pkt_per_lane_NFZ[etrn].valid    <= (in_valid && in_ready);
-                    end
-                    Z_81 : begin
-                        pkt_per_lane[etrn].data     <= i_data_proc[2];
-                        pkt_per_lane[etrn].valid    <= (in_valid && in_ready);
-                    end
-                    
-                endcase
+                
+
             end
 
             //Simple Counter to count blocks to progress through the Shift Addresses
-            if(in_valid && in_ready) begin
-                colm_cnt <= in_last ? '0 : colm_cnt + 1; 
+            if(pre_proc_valid) begin
+                colm_cnt <= pre_proc_last ? '0 : colm_cnt + 1; 
             end
         end
     end
@@ -368,14 +360,6 @@ module QCLDPCEncoderController #(
             end        
         end
     endgenerate
-    
-
-
-
-
-    
-    
-     
+      
 endmodule
-
 

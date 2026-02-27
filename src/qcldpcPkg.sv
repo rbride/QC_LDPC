@@ -12,9 +12,9 @@ package qcldpcPkg;
     } pipeline_pkt_t;
 
     typedef enum logic [2:0] {
-        Z_81 = 3'b001,  // Z of 81
+        Z_27 = 3'b001,  // Z of 81
         Z_54 = 3'b010,  // Z of 54
-        Z_27 = 3'b100   // Z of 27
+        Z_81 = 3'b100   // Z of 27
     } z_req_t;
 
     // --------------------------------------
@@ -52,5 +52,4 @@ package qcldpcPkg;
     endfunction
 
 endpackage
-
 

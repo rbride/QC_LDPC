@@ -36,8 +36,7 @@ module pipelinedCircularShifter #(
     generate
         if (ROTATES_PER_CYCLE < 1 || ROTATES_PER_CYCLE > NumMuxlevels) begin
         initial
-            $fatal(1,   
-                "Invalid ROTATES_PER_CYCLE=%0d \n Either ROTATES_PER_CYCLE is less than 1 \
+            $fatal(1,"Invalid ROTATES_PER_CYCLE=%0d \n Either ROTATES_PER_CYCLE is less than 1 \
                 or Rotates per Cycle is > the total Mux levels needed for the rotate",
                 ROTATES_PER_CYCLE);
         end
@@ -83,6 +82,7 @@ module pipelinedCircularShifter #(
                     stage_regs[i+1].data  <= stage_wires[ShiftsPerPipelineLevel];
                     stage_regs[i+1].valid <= stage_regs[i].valid;
                     stage_regs[i+1].last  <= stage_regs[i].last;
+                    stage_regs[i+1].skip  <= stage_regs[i].skip;
                     stage_regs[i+1].svals <= stage_regs[i].svals;
                 end
             end
