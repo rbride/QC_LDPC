@@ -1,4 +1,5 @@
 `timescale 1ns / 1ps
+import qcldpcPkg::*;
 // ==========================================================================
 // Fully Pipelined Barrel Shifter
 // Author: Ryan Bride
@@ -8,9 +9,6 @@
 //      to achieve FMax after synthesis, however module can be changed
 //      to combine N of those shifts per cycle. This is because various 
 //      Platforms and use cases my have a variety of requirments and tradeoffs
-//      i.e. you could choice to do more stages per cycle lowering Fmax because 
-//      you have plentiful Bram to exploit and want to do a bunch in parallel
-//      at the cost of decreased clock speed etc
 // MAXZ: 
 //      The Maximum Value should always be used for the Z, as the top module
 //      incorperating this module has a step that Zero pads the input data
@@ -18,37 +16,49 @@
 // ROTATES_PER_CYCLE:
 //      The number of Rotates levels / Shifts per cycle
 //      Default is once again 1, for FMax
-// ==========================================================================\
+// ==========================================================================
 module pipelinedCircularShifter #(     
     parameter int MAXZ                    = 81,
     parameter int ROTATES_PER_CYCLE       = 1 //Should throw an error on 0
 )(
-    input logic CLK, rst_n, valid_in,
-    input logic [MAXZ-1:0] in_data,
+    input  logic CLK, rst_n, valid_in,
     input logic [$clog2(MAXZ)-1:0] shift_val,
-    output logic [MAXZ-1:0] out_data,
-    output logic valid_out
+    input  pipeline_pkt_t pkt_i,
+    output pipeline_pkt_t pkt_o
 );  
+    //==========================================================================    
+    // Elaboration Time Constants and Config Check
+    // ----------------------------------------------------------------   
     localparam int NumMuxlevels             = $clog2(MAXZ);
     localparam int ShiftsPerPipelineLevel   = ROTATES_PER_CYCLE;
     localparam int NumStages                = (NumMuxlevels % ShiftsPerPipelineLevel  != 0) ?
                                               ((NumMuxlevels / ShiftsPerPipelineLevel) +1 )  :
                                               (NumMuxlevels / ShiftsPerPipelineLevel);
-
-    logic [MAXZ-1:0] stage_regs [0:NumStages];  
-    logic [NumStages:0] valid_pipe;
-    //stage[0] is the currently most recently streamed in data so load it in
-    assign stage_regs[0] = in_data;
+    generate
+        if (ROTATES_PER_CYCLE < 1 || ROTATES_PER_CYCLE > NumMuxlevels) begin
+        initial
+            $fatal(1,   
+                "Invalid ROTATES_PER_CYCLE=%0d \n Either ROTATES_PER_CYCLE is less than 1 \
+                or Rotates per Cycle is > the total Mux levels needed for the rotate",
+                ROTATES_PER_CYCLE);
+        end
+    endgenerate
+    //==========================================================================
         
+    pipeline_pkt_t stage_regs[0:NumStages];    
+  
+    assign stage_regs[0].data   = pkt_i.data;
+    assign stage_regs[0].last   = pkt_i.last;
+    assign stage_regs[0].valid  = pkt_i.valid;
+
     genvar i, qq;
-    
     generate
         for(i=0; i<NumStages; i++) begin : PipelineStage
             //Wire array for each substep output
             wire [MAXZ-1:0] stage_wires [0:ShiftsPerPipelineLevel];
             
             //Input the current value stored in the regs into the wire net
-            assign stage_wires[0] = stage_regs[i];
+            assign stage_wires[0] = stage_regs[i].data;
 
             for(qq=0; qq<ShiftsPerPipelineLevel; qq++) begin : RotStagePerPipe
                 localparam int idx = i*ShiftsPerPipelineLevel+qq;
@@ -70,25 +80,18 @@ module pipelinedCircularShifter #(
             always_ff @(posedge CLK) begin
                 if(!rst_n)
                     stage_regs[i+1] <= '0;
-                else
-                    stage_regs[i+1] <= stage_wires[ShiftsPerPipelineLevel];
+                else begin
+                    stage_regs[i+1].data  <= stage_wires[ShiftsPerPipelineLevel];
+                    stage_regs[i+1].valid <= stage_regs[i].valid;
+                    stage_regs[i+1].last  <= stage_regs[i].last;
+                end
             end
         end
     endgenerate
-
-    assign out_data = stage_regs[NumStages];
-
-    always_ff @(posedge CLK) begin
-        if (!rst_n)
-            valid_pipe <= '0;
-        else begin
-            valid_pipe[0] <= valid_in;
-            for (int i = 1; i <= NumStages; i++)
-                valid_pipe[i] <= valid_pipe[i-1];
-        end
-    end
-
-    assign valid_out = valid_pipe[NumStages];
+    
+    assign pkt_o.data   = stage_regs[NumStages].data;
+    assign pkt_o.valid  = stage_regs[NumStages].valid;
+    assign pkt_o.last   = stage_regs[NumStages].last;
 
 endmodule
 // -------------------------------------------------------------------------    
@@ -190,3 +193,5 @@ module pipelinedCircularShifterFMAX #(
     assign valid_out = valid_pipe[NumStages];
     
 endmodule
+
+
