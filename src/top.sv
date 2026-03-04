@@ -15,8 +15,8 @@ import qcldpcPkg::*;
 //  The following Parameters Effect the architectural structure of the module. All other values Throw and Error
 //  ROM_TYPE:  Chooses the Selected ROM Structure used to store Protoype Matrix/Shift Values. 
 //      0 = Single-Rate LUT Based Rom (i.e only one speed and one Proto Matrix defined for that speed)   
-//      1 = Multi-RATE LUT, Simple LUT Based rom that supports 3 seperate Z's
-//      2 = BRAM Based ROM Supporting 3 Seperate Z's, shouldn't be used for this version of the QCLDPC
+//      1 = Multi-RATE LUT, Simple lut story 
+//      2 = (DEFAULT) Explicitly Defined LUT per Lane Rom, should provide Tool agnostic FMAX support
 //
 //  TODO: ADD the fact that Req_Z is static to readme
 //  TODO  add to readme that Z_VALUE_ARRAY MUST Must be ordered Smallest to largest.
@@ -27,7 +27,6 @@ module QCLDPCEncoderController #(
     parameter int MAXZ                                   =      81,
     parameter int IBLKS_NUM                              =      20,
     parameter int NUM_PBLKS                              =      4,         
-    parameter int ROM_TYPE                               =      1,          
     parameter int Z_VALUE_ARRAY[0:NUM_OF_SUPPORTED_Z-1]  =      {27, 54, 81}, 
     parameter int ROTATES_PER_CYCLE                      =      1,      
     parameter int NUM_ACCUM_PIPE_SPLITS                  =      2,                //Increase for more Head Room
@@ -54,8 +53,6 @@ module QCLDPCEncoderController #(
     // Configuration check/error handling Etc
     //**************************************************************************************************************
     generate
-        if ( ROM_TYPE > 1 )
-            initial $fatal(1, "Invalid ROM_TYPE=%0d \n  Supported Values are 1 and 0",ROM_TYPE);
         if (Gen_Dedicated_Rot > 1) begin
             initial $fatal(1, "Invalid Configuration, design supports only 1 non factor of MaxZ, Z value \
                 your design has %0d non factor of MaxZ Z values requesting to be supported", Gen_Dedicated_Rot );
@@ -101,40 +98,11 @@ module QCLDPCEncoderController #(
     //   The Single LUT Rom is there for either single Z designs     
     //==========================================================================-    
     generate
-        case (ROM_TYPE)
-            0: begin : Single_LUT_ROM
-                ProtoMatrixRom_SingleLUT #(   
-                        .THE_Z(MAXZ), .NUM_PARITY_BLKS(NUM_PBLKS), 
-                        .WIDTH(PmRomWidth), .DEPTH(PmRomDepth), .ADDRW(PmRomAddrW)
-                    )  
-                    GenROM (  .addr(shift_rom_addr),  .data_out(shift_rom_out)  );
-            end
-            1: begin : Multi_LUT_ROM 
-                ProtoMatrixRom_MultiLUT #(
-                        .NUM_Z(NUM_SUP_Z), .Z_VALUES(Z_VALUE_ARRAY), .NUM_PARITY_BLKS(NUM_PBLKS),
-                        .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW)
-                    )
-                    GenROM (  .addr(shift_rom_addr),.data_out(shift_rom_out)    ); 
-            end  
-            // 2: begin : BRAM_ROM
-            //     ProtoMatrixRom_BRAM #(
-            //             .NUM_Z(NUM_SUP_Z), .NUM_PARITY_BLKS(NUM_PBLKS), .Z_VALUES(Z_VALUE_ARRAY),
-            //             .DEPTH(PmRomDepth), .WIDTH(PmRomWidth), .ADDRW(PmRomAddrW)
-            //         ) GenRom ( .CLK(CLK), .addr(shift_addr),.data_out(shift_values) );
-            // end 
-            default: begin : assert_invalid_cfg
-                $fatal(1, "Invalid ROM Configuration Selected - Aborting");
-            end
-        endcase
         
-        //Generate second single format Look up table for second dedicated Rot
-        if(Gen_Dedicated_Rot) begin
-            ProtoMatrixRom_SingleLUT #(
-                .THE_Z(Z_VALUE_ARRAY[NonFactorZIdx]),  .NUM_PARITY_BLKS(NUM_PBLKS), 
-                .WIDTH(NFZPmRomWidth), .DEPTH(NFZPmRomDepth), .ADDRW(NFZPmRomAddrW)
-            )
-            GenROMDedicateROT ( .addr(shift_addr_NFZ),  .data_out(shift_values_NFZ)  );
-        end
+        
+        
+        
+  
     endgenerate
     //==========================================================================    
     // Generate the requested pipelined Circular Shifter for MAXZ and Z=54
