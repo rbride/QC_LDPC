@@ -25,9 +25,7 @@ module qcldpc_scoreboard (
         stats       = '{0, 0, 0, 32'hFFFF_FFFF, 0, 0.0};
     end
 
-    // -------------------------------------------------------------------------
     // Checker — runs once per completed codeword
-    // -------------------------------------------------------------------------
     task automatic check_next();
         automatic test_vector_t expected;
         automatic dut_result_t  actual;

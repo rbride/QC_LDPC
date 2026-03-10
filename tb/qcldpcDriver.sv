@@ -20,21 +20,16 @@ module qcldpc_driver (
 
     // Idle defaults
     initial begin
-        in_valid = 1'b0;
-        in_last  = 1'b0;
-        req_z    = Z_81;
-        i_data   = '0;
+        in_valid = 1'b0;  in_last = 1'b0;  req_z = Z_81; i_data = '0;
     end
 
     // -------------------------------------------------------------------------
-    // drive_codeword
-    // Drives a complete codeword — one block per cycle
+    // Drives a complete codeword one block per cycle
     // Waits for in_ready before asserting valid
     // Correctly handles back-pressure from DUT
     // -------------------------------------------------------------------------
     task automatic drive_codeword(input test_vector_t tv);
         automatic logic [TB_MAXZ-1:0] block;
-
         req_z = tv.z_sel;
 
         for(int blk = 0; blk < TB_IBLKS_NUM; blk++) begin
@@ -58,7 +53,6 @@ module qcldpc_driver (
     endtask
 
     // -------------------------------------------------------------------------
-    // drive_codeword_with_gaps
     // Same as drive_codeword but randomly injects idle cycles between blocks
     // gap_probability: 0-100, percentage chance of injecting an idle cycle
     // Tests that DUT handles non-continuous input correctly
@@ -68,7 +62,6 @@ module qcldpc_driver (
         input int           gap_probability
     );
         automatic logic [TB_MAXZ-1:0] block;
-
         req_z = tv.z_sel;
 
         for(int blk = 0; blk < TB_IBLKS_NUM; blk++) begin

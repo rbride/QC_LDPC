@@ -37,68 +37,37 @@ module qcldpc_tb_top;
     // -------------------------------------------------------------------------
     // DUT interfaces and instantiation
     // -------------------------------------------------------------------------
-    logic                                        in_valid;
-    logic                                        in_last;
-    logic                                        in_ready;
-    z_req_t                                      req_z;
-    logic [MAXZ-1:0]                             i_data;
-    logic [MAXZ*(NUM_PBLKS+IBLKS_NUM)-1:0]       p_data_out;
+    logic in_valid; logic in_last; logic in_ready;                z_req_t req_z;
+    logic [MAXZ-1:0] i_data;   logic [MAXZ*(NUM_PBLKS+IBLKS_NUM)-1:0]p_data_out;
 
     QCLDPCEncoderController #(
-        .NUM_SUP_Z              (3),
-        .MAXZ                   (81),
-        .IBLKS_NUM              (20),
-        .NUM_PBLKS              (4),
-        .ROM_TYPE               (1),
-        .Z_VALUE_ARRAY          ('{27, 54, 81}),
-        .ROTATES_PER_CYCLE      (1),
-        .NUM_ACCUM_PIPE_SPLITS  (2)
+        .NUM_SUP_Z(3),  .MAXZ(81),  .IBLKS_NUM(20),  .NUM_PBLKS(4),
+        .ROM_TYPE(1),   .Z_VALUE_ARRAY('{27, 54, 81}),
+        .ROTATES_PER_CYCLE(1), .NUM_ACCUM_PIPE_SPLITS  (2)
     ) dut (
-        .CLK        (CLK),
-        .rst_n      (rst_n),
-        .in_valid   (in_valid),
-        .in_last    (in_last),
-        .in_ready   (in_ready),
-        .req_z      (req_z),
-        .i_data     (i_data),
-        .p_data_out (p_data_out)
+        .CLK(CLK), .rst_n(rst_n), .in_valid(in_valid), .in_last(in_last),
+        .in_ready(in_ready), .req_z(req_z), .i_data(i_data), .p_data_out(p_data_out)
     );
-
     // -------------------------------------------------------------------------
     // TB components
     // -------------------------------------------------------------------------
     qcldpc_driver driver_i (
-        .CLK      (CLK),
-        .rst_n    (rst_n),
-        .in_ready (in_ready),
-        .in_valid (in_valid),
-        .in_last  (in_last),
-        .req_z    (req_z),
-        .i_data   (i_data)
+        .CLK(CLK), .rst_n(rst_n), .in_ready(in_ready), .in_valid(in_valid),
+        .in_last(in_last), .req_z(req_z), .i_data(i_data)
     );
 
     qcldpc_monitor monitor_i (
-        .CLK        (CLK),
-        .rst_n      (rst_n),
-        .in_valid   (in_valid),
-        .in_ready   (in_ready),
-        .in_last    (in_last),
-        .req_z      (req_z),
-        .p_data_out (p_data_out)
+        .CLK(CLK), .rst_n(rst_n), .in_valid(in_valid), .in_ready(in_ready),
+        .in_last(in_last), .req_z(req_z), .p_data_out (p_data_out)
     );
 
     qcldpc_scoreboard scoreboard_i (
-        .CLK   (CLK),
-        .rst_n (rst_n)
+        .CLK(CLK),  .rst_n(rst_n)
     );
 
     qcldpc_coverage coverage_i (
-        .CLK      (CLK),
-        .rst_n    (rst_n),
-        .req_z    (req_z),
-        .in_valid (in_valid),
-        .in_ready (in_ready),
-        .in_last  (in_last)
+        .CLK(CLK), .rst_n(rst_n), .req_z(req_z),
+        .in_valid(in_valid), .in_ready(in_ready), .in_last(in_last)
     );
 
     // Waveform dump
@@ -106,7 +75,6 @@ module qcldpc_tb_top;
         $dumpfile("waves.vcd");
         $dumpvars(0, qcldpc_tb_top);
     end
-
     // -------------------------------------------------------------------------
     // Timeout watchdog — catches infinite loops and hangs
     // 1ms at 900MHz = 900,000 cycles — more than enough for any test
@@ -115,7 +83,6 @@ module qcldpc_tb_top;
         #1_000_000;
         $fatal(1, "[TIMEOUT] Simulation exceeded maximum time — possible hang");
     end
-
     // -------------------------------------------------------------------------
     // Main test execution
     // -------------------------------------------------------------------------
@@ -130,9 +97,7 @@ module qcldpc_tb_top;
         @(posedge rst_n);
         repeat(5) @(posedge CLK);
 
-        // -------------------------------------------------------------------
         // Test suite
-        // -------------------------------------------------------------------
         run_directed_tests();
         run_random_tests(500);
         run_corner_cases();
@@ -140,15 +105,11 @@ module qcldpc_tb_top;
         // Wait for all results to flush through pipeline
         repeat(50) @(posedge CLK);
 
-        // -------------------------------------------------------------------
         // Reports
-        // -------------------------------------------------------------------
         scoreboard_i.report();
         coverage_i.report();
 
-        // -------------------------------------------------------------------
         // Final pass/fail
-        // -------------------------------------------------------------------
         if(scoreboard_i.stats.tests_failed == 0) begin
             $display("╔══════════════════════════════════════╗");
             $display("║      ALL TESTS PASSED  %-5d/%-5d   ║",
@@ -165,7 +126,6 @@ module qcldpc_tb_top;
             $finish(1);
         end
     end
-
     // =========================================================================
     // Test tasks
     // =========================================================================
@@ -232,8 +192,8 @@ module qcldpc_tb_top;
     // -------------------------------------------------------------------------
     task automatic run_random_tests(input int count);
         automatic test_vector_t tv;
-        automatic int           base_id = 10000;
-        automatic z_req_t       z_vals [3] = '{Z_27, Z_54, Z_81};
+        automatic int base_id = 10000;
+        automatic z_req_t z_vals [3] = '{Z_27, Z_54, Z_81};
 
         $display("[TEST] Starting %0d random tests...", count);
 
@@ -266,7 +226,7 @@ module qcldpc_tb_top;
     // -------------------------------------------------------------------------
     task automatic run_corner_cases();
         automatic test_vector_t tv;
-        automatic int           base_id = 30000;
+        automatic int base_id = 30000;
 
         $display("[TEST] Starting corner case tests...");
 

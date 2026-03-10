@@ -18,12 +18,9 @@ module qcldpc_coverage (
     input logic    in_last
 );
     import qcldpcPkg::*;
-    import qcldpc_tb_pkg::*;
+    import qcldpcTBPkg::*;
 
-    // -------------------------------------------------------------------------
     // Z selection coverage
-    // Every supported Z value must be exercised
-    // -------------------------------------------------------------------------
     covergroup cg_z_selection @(posedge CLK iff rst_n);
         cp_z: coverpoint req_z {
             bins z27 = {Z_27};
@@ -31,7 +28,7 @@ module qcldpc_coverage (
             bins z81 = {Z_81};
         }
     endgroup
-
+    
     // -------------------------------------------------------------------------
     // Handshake coverage
     // All valid/ready combinations must occur
@@ -39,28 +36,23 @@ module qcldpc_coverage (
     // -------------------------------------------------------------------------
     covergroup cg_handshake @(posedge CLK iff rst_n);
         cp_valid: coverpoint in_valid {
-            bins low  = {0};
-            bins high = {1};
+            bins low  = {0};    bins high = {1};
         }
         cp_ready: coverpoint in_ready {
-            bins low  = {0};
-            bins high = {1};
+            bins low  = {0};    bins high = {1};
         }
         cp_last: coverpoint in_last {
-            bins low  = {0};
-            bins high = {1};
+            bins low  = {0};    bins high = {1};
         }
 
         // Back-pressure: valid asserted but DUT not ready
         cp_backpressure: coverpoint (in_valid & ~in_ready) {
-            bins active = {1};
-            bins idle   = {0};
+            bins active = {1};  bins idle   = {0};
         }
 
         // Successful transfer: both valid and ready
         cp_transfer: coverpoint (in_valid & in_ready) {
-            bins active = {1};
-            bins idle   = {0};
+            bins active = {1};  bins idle   = {0};
         }
 
         // Back-pressure must occur for each Z value
@@ -85,18 +77,12 @@ module qcldpc_coverage (
 
     covergroup cg_z_transitions @(posedge CLK iff (rst_n && in_valid && in_ready && in_last));
         cp_from_z: coverpoint prev_z {
-            bins z27 = {Z_27};
-            bins z54 = {Z_54};
-            bins z81 = {Z_81};
+            bins z27 = {Z_27};  bins z54 = {Z_54};  bins z81 = {Z_81};
         }
         cp_to_z: coverpoint req_z {
-            bins z27 = {Z_27};
-            bins z54 = {Z_54};
-            bins z81 = {Z_81};
+            bins z27 = {Z_27};  bins z54 = {Z_54};  bins z81 = {Z_81};
         }
-        // All 9 combinations: 27→27, 27→54, 27→81,
-        //                     54→27, 54→54, 54→81,
-        //                     81→27, 81→54, 81→81
+        // All 9 combinations: 27→27, 27→54, 27→81, 54→27, 54→54, 54→81, 81→27, 81→54, 81→81
         cx_transition: cross cp_from_z, cp_to_z;
     endgroup
 
@@ -106,8 +92,7 @@ module qcldpc_coverage (
     // -------------------------------------------------------------------------
     covergroup cg_reset @(posedge CLK);
         cp_rst: coverpoint rst_n {
-            bins deasserted = {0};
-            bins asserted   = {1};
+            bins deasserted = {0};  bins asserted   = {1};
         }
         // Reset while a transfer is in progress
         cp_reset_during_transfer: coverpoint (~rst_n & in_valid) {

@@ -26,9 +26,7 @@ module qcldpc_monitor (
     // -------------------------------------------------------------------------
     mailbox #(dut_result_t) result_mailbox;
 
-    // -------------------------------------------------------------------------
     // Internal tracking
-    // -------------------------------------------------------------------------
     int  codeword_start_cycle;
     int  current_cycle;
     int  captured_test_id;
@@ -37,10 +35,10 @@ module qcldpc_monitor (
     z_req_t captured_z;
 
     initial begin
-        result_mailbox    = new();
-        current_cycle     = 0;
-        first_block_seen  = 0;
-        captured_z        = Z_81;
+        result_mailbox = new();
+        current_cycle = 0;
+        first_block_seen = 0;
+        captured_z = Z_81;
         captured_test_id  = 0;
     end
 
@@ -50,9 +48,7 @@ module qcldpc_monitor (
         else       current_cycle <= current_cycle + 1;
     end
 
-    // -------------------------------------------------------------------------
     // Input monitor — track codeword start for latency measurement
-    // -------------------------------------------------------------------------
     always_ff @(posedge CLK) begin
         if(!rst_n) begin
             first_block_seen     <= 0;
