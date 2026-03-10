@@ -45,8 +45,8 @@ module QCLDPCEncoderController #(
 )(
     input  logic CLK,   rst_n, in_valid,   in_last,   //In_valid and in_last for handshake signals 
     input  z_req_t req_z,           //STATIC, 3'b100 is 27, 3'b010 is 54, 3'b001 is 81, regardless of how many req_z, change it in Package
-    input  logic [MAXZ-1:0]                         i_data,   
-    output logic [MAXZ*(NUM_PBLKS+IBLKS_NUM)-1:0]   p_data_out,
+    input  logic [MAXZ-1:0]             i_data,   
+    output logic [MAXZ*NUM_PBLKS-1:0]   p_data_out,
     output logic in_ready
 );
     //**************************************************************************************************************
@@ -91,19 +91,6 @@ module QCLDPCEncoderController #(
     
     logic [$clog2(IBLKS_NUM)-1:0] colm_cnt; 
 
-    //==========================================================================    
-    // Generate ROM
-    //   The BRAM Rom is there for the currently not started Pointer Rotation
-    //   Morph of this codebase for Z's of like 256 and 352. in the 3DPP Spec
-    //   The Single LUT Rom is there for either single Z designs     
-    //==========================================================================-    
-    generate
-        
-        
-        
-        
-  
-    endgenerate
     //==========================================================================    
     // Generate the requested pipelined Circular Shifter for MAXZ and Z=54
     //==========================================================================    
@@ -232,8 +219,6 @@ module QCLDPCEncoderController #(
                 pkt_per_lane_NFZ[etrn].last     <= pre_proc_valid;
                 pkt_per_lane_NFZ[etrn].data     <= '0;  
                 pkt_per_lane_NFZ[etrn].svals    <= '0;
-
-                
 
             end
 
